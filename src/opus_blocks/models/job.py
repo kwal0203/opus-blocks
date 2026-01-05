@@ -31,7 +31,8 @@ class Job(Base):
 
     __table_args__ = (
         CheckConstraint(
-            "job_type IN ('EXTRACT_FACTS','GENERATE_PARAGRAPH','VERIFY_PARAGRAPH','REGENERATE_SENTENCES')",
+            "job_type IN ('EXTRACT_FACTS','GENERATE_PARAGRAPH','VERIFY_PARAGRAPH',"
+            "'REGENERATE_SENTENCES')",
             name="jobs_type_check",
         ),
         CheckConstraint(

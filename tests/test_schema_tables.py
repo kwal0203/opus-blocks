@@ -1,5 +1,5 @@
-from opus_blocks.db.base import Base
 import opus_blocks.models  # noqa: F401
+from opus_blocks.db.base import Base
 
 
 def test_expected_tables_are_registered() -> None:

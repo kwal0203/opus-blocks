@@ -1,8 +1,9 @@
 import os
 
 import pytest
-from alembic import command
 from alembic.config import Config
+
+from alembic import command
 
 
 def test_alembic_upgrade_and_downgrade() -> None:

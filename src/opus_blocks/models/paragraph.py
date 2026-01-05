@@ -42,7 +42,8 @@ class Paragraph(Base):
             name="paragraphs_section_check",
         ),
         CheckConstraint(
-            "status IN ('CREATED','GENERATING','NEEDS_REVISION','VERIFIED','PENDING_VERIFY','FAILED_GENERATION')",
+            "status IN ('CREATED','GENERATING','NEEDS_REVISION','VERIFIED',"
+            "'PENDING_VERIFY','FAILED_GENERATION')",
             name="paragraphs_status_check",
         ),
     )
