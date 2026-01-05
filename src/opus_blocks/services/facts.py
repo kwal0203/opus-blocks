@@ -8,7 +8,9 @@ from opus_blocks.models.document import Document
 from opus_blocks.models.fact import Fact
 from opus_blocks.models.manuscript import Manuscript
 from opus_blocks.models.manuscript_document import ManuscriptDocument
+from opus_blocks.models.span import Span
 from opus_blocks.schemas.fact import ManualFactCreate
+from opus_blocks.schemas.span import FactSpanCreate
 
 
 async def create_manual_fact(
@@ -55,6 +57,23 @@ async def list_document_facts(
     return list(facts_result.scalars().all())
 
 
+async def list_document_facts_with_spans(
+    session: AsyncSession, owner_id: UUID, document_id: UUID
+) -> list[tuple[Fact, Span | None]]:
+    result = await session.execute(
+        select(Document).where(Document.id == document_id, Document.owner_id == owner_id)
+    )
+    if not result.scalar_one_or_none():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+
+    facts_result = await session.execute(
+        select(Fact, Span)
+        .outerjoin(Span, Fact.span_id == Span.id)
+        .where(Fact.document_id == document_id, Fact.owner_id == owner_id)
+    )
+    return list(facts_result.all())
+
+
 async def list_manuscript_facts(
     session: AsyncSession, owner_id: UUID, manuscript_id: UUID
 ) -> list[Fact]:
@@ -73,3 +92,69 @@ async def list_manuscript_facts(
         )
     )
     return list(facts_result.scalars().all())
+
+
+async def list_manuscript_facts_with_spans(
+    session: AsyncSession, owner_id: UUID, manuscript_id: UUID
+) -> list[tuple[Fact, Span | None]]:
+    manuscript_result = await session.execute(
+        select(Manuscript).where(Manuscript.id == manuscript_id, Manuscript.owner_id == owner_id)
+    )
+    if not manuscript_result.scalar_one_or_none():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Manuscript not found")
+
+    facts_result = await session.execute(
+        select(Fact, Span)
+        .join(ManuscriptDocument, Fact.document_id == ManuscriptDocument.document_id)
+        .outerjoin(Span, Fact.span_id == Span.id)
+        .where(
+            ManuscriptDocument.manuscript_id == manuscript_id,
+            Fact.owner_id == owner_id,
+        )
+    )
+    return list(facts_result.all())
+
+
+async def create_fact_with_span(
+    session: AsyncSession,
+    owner_id: UUID,
+    document_id: UUID,
+    fact_in: FactSpanCreate,
+) -> Fact:
+    document_result = await session.execute(
+        select(Document).where(Document.id == document_id, Document.owner_id == owner_id)
+    )
+    if not document_result.scalar_one_or_none():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+
+    span_id = None
+    span = None
+    if fact_in.span:
+        span = Span(
+            document_id=document_id,
+            page=fact_in.span.page,
+            start_char=fact_in.span.start_char,
+            end_char=fact_in.span.end_char,
+            quote=fact_in.span.quote,
+        )
+        session.add(span)
+        await session.flush()
+        span_id = span.id
+
+    fact = Fact(
+        owner_id=owner_id,
+        document_id=document_id,
+        span_id=span_id,
+        source_type=fact_in.source_type,
+        content=fact_in.content,
+        qualifiers=fact_in.qualifiers,
+        confidence=fact_in.confidence,
+        is_uncertain=fact_in.is_uncertain,
+        created_by=fact_in.created_by,
+    )
+    session.add(fact)
+    await session.commit()
+    await session.refresh(fact)
+    if span:
+        await session.refresh(span)
+    return fact

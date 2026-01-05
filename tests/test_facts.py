@@ -67,6 +67,34 @@ async def test_manual_fact_and_listings(async_client: AsyncClient, tmp_path: Pat
         assert len(facts) == 1
         assert facts[0]["id"] == fact["id"]
 
+        pdf_fact_payload = {
+            "content": "PDF fact content.",
+            "qualifiers": {"section": "intro"},
+            "confidence": 0.75,
+            "is_uncertain": False,
+            "span": {
+                "page": 1,
+                "start_char": 0,
+                "end_char": 12,
+                "quote": "PDF excerpt",
+            },
+        }
+        pdf_fact_response = await async_client.post(
+            f"/api/v1/documents/{document['id']}/facts", json=pdf_fact_payload, headers=headers
+        )
+        assert pdf_fact_response.status_code == 201
+        pdf_fact = pdf_fact_response.json()
+        assert pdf_fact["source_type"] == "PDF"
+
+        spans_response = await async_client.get(
+            f"/api/v1/documents/{document['id']}/facts/with-spans", headers=headers
+        )
+        assert spans_response.status_code == 200
+        spans_payload = spans_response.json()
+        assert len(spans_payload) == 2
+        span_fact = next(item for item in spans_payload if item["id"] == pdf_fact["id"])
+        assert span_fact["span"]["quote"] == "PDF excerpt"
+
         manuscript_response = await async_client.post(
             "/api/v1/manuscripts",
             json={"title": "Fact Manuscript"},
@@ -86,7 +114,18 @@ async def test_manual_fact_and_listings(async_client: AsyncClient, tmp_path: Pat
         )
         assert manuscript_facts_response.status_code == 200
         manuscript_facts = manuscript_facts_response.json()
-        assert len(manuscript_facts) == 1
-        assert manuscript_facts[0]["id"] == fact["id"]
+        assert len(manuscript_facts) == 2
+        assert {item["id"] for item in manuscript_facts} == {fact["id"], pdf_fact["id"]}
+
+        manuscript_spans_response = await async_client.get(
+            f"/api/v1/manuscripts/{manuscript['id']}/facts/with-spans", headers=headers
+        )
+        assert manuscript_spans_response.status_code == 200
+        manuscript_spans = manuscript_spans_response.json()
+        assert len(manuscript_spans) == 2
+        manuscript_span_fact = next(
+            item for item in manuscript_spans if item["id"] == pdf_fact["id"]
+        )
+        assert manuscript_span_fact["span"]["page"] == 1
     finally:
         settings.storage_root = original_root

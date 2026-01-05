@@ -3,6 +3,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from opus_blocks.schemas.span import SpanRead
+
 
 class ManualFactCreate(BaseModel):
     content: str = Field(..., min_length=1)
@@ -26,3 +28,7 @@ class FactRead(BaseModel):
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class FactWithSpanRead(FactRead):
+    span: SpanRead | None = None

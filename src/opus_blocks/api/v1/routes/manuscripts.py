@@ -3,9 +3,10 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, status
 
 from opus_blocks.api.deps import CurrentUser, DbSession
-from opus_blocks.schemas.fact import FactRead
+from opus_blocks.schemas.fact import FactRead, FactWithSpanRead
 from opus_blocks.schemas.manuscript import ManuscriptCreate, ManuscriptRead
-from opus_blocks.services.facts import list_manuscript_facts
+from opus_blocks.schemas.span import SpanRead
+from opus_blocks.services.facts import list_manuscript_facts, list_manuscript_facts_with_spans
 from opus_blocks.services.manuscripts import create_manuscript, get_manuscript
 from opus_blocks.services.manuscripts_documents import add_document_to_manuscript
 
@@ -55,3 +56,21 @@ async def list_manuscript_facts_endpoint(
 ) -> list[FactRead]:
     facts = await list_manuscript_facts(session, owner_id=user.id, manuscript_id=manuscript_id)
     return [FactRead.model_validate(fact) for fact in facts]
+
+
+@router.get("/{manuscript_id}/facts/with-spans", response_model=list[FactWithSpanRead])
+async def list_manuscript_facts_with_spans_endpoint(
+    manuscript_id: UUID,
+    session: DbSession,
+    user: CurrentUser,
+) -> list[FactWithSpanRead]:
+    facts = await list_manuscript_facts_with_spans(
+        session, owner_id=user.id, manuscript_id=manuscript_id
+    )
+    response: list[FactWithSpanRead] = []
+    for fact, span in facts:
+        payload = FactWithSpanRead.model_validate(fact)
+        if span:
+            payload.span = SpanRead.model_validate(span)
+        response.append(payload)
+    return response
