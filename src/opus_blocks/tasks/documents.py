@@ -7,7 +7,9 @@ from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async
 
 from opus_blocks.core.config import settings
 from opus_blocks.models.document import Document
+from opus_blocks.models.fact import Fact
 from opus_blocks.models.job import Job
+from opus_blocks.models.span import Span
 from opus_blocks.services.runs import create_run
 from opus_blocks.tasks.celery_app import celery_app
 
@@ -44,6 +46,32 @@ async def run_extract_facts_job(job_id: UUID, document_id: UUID) -> None:
                 inputs_json={"document_id": str(document.id)},
                 outputs_json={"status": "stub"},
             )
+
+        existing_facts = await session.scalar(
+            select(Fact.id).where(Fact.document_id == document.id).limit(1)
+        )
+        if not existing_facts and job.owner_id:
+            span = Span(
+                document_id=document.id,
+                page=1,
+                start_char=0,
+                end_char=24,
+                quote="Placeholder extracted span.",
+            )
+            session.add(span)
+            await session.flush()
+            fact = Fact(
+                owner_id=job.owner_id,
+                document_id=document.id,
+                span_id=span.id,
+                source_type="PDF",
+                content="Placeholder extracted fact.",
+                qualifiers={},
+                confidence=0.5,
+                is_uncertain=True,
+                created_by="LIBRARIAN",
+            )
+            session.add(fact)
 
         document.status = "FACTS_READY"
         job.status = "SUCCEEDED"
