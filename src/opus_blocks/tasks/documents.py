@@ -51,27 +51,68 @@ async def run_extract_facts_job(job_id: UUID, document_id: UUID) -> None:
             select(Fact.id).where(Fact.document_id == document.id).limit(1)
         )
         if not existing_facts and job.owner_id:
-            span = Span(
-                document_id=document.id,
-                page=1,
-                start_char=0,
-                end_char=24,
-                quote="Placeholder extracted span.",
-            )
-            session.add(span)
-            await session.flush()
-            fact = Fact(
-                owner_id=job.owner_id,
-                document_id=document.id,
-                span_id=span.id,
-                source_type="PDF",
-                content="Placeholder extracted fact.",
-                qualifiers={},
-                confidence=0.5,
-                is_uncertain=True,
-                created_by="LIBRARIAN",
-            )
-            session.add(fact)
+            placeholders = [
+                (
+                    1,
+                    0,
+                    24,
+                    "Placeholder extracted span.",
+                    "Placeholder extracted fact.",
+                    0.5,
+                    True,
+                ),
+                (
+                    2,
+                    50,
+                    80,
+                    "Additional placeholder span.",
+                    "Secondary extracted fact.",
+                    0.7,
+                    False,
+                ),
+                (
+                    None,
+                    None,
+                    None,
+                    None,
+                    "High-level extracted fact without span.",
+                    0.4,
+                    True,
+                ),
+            ]
+            for (
+                page,
+                start_char,
+                end_char,
+                quote,
+                content,
+                confidence,
+                is_uncertain,
+            ) in placeholders:
+                span_id = None
+                if page is not None:
+                    span = Span(
+                        document_id=document.id,
+                        page=page,
+                        start_char=start_char,
+                        end_char=end_char,
+                        quote=quote,
+                    )
+                    session.add(span)
+                    await session.flush()
+                    span_id = span.id
+                fact = Fact(
+                    owner_id=job.owner_id,
+                    document_id=document.id,
+                    span_id=span_id,
+                    source_type="PDF",
+                    content=content,
+                    qualifiers={},
+                    confidence=confidence,
+                    is_uncertain=is_uncertain,
+                    created_by="LIBRARIAN",
+                )
+                session.add(fact)
 
         document.status = "FACTS_READY"
         job.status = "SUCCEEDED"

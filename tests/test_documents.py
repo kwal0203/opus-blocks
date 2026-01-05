@@ -74,7 +74,7 @@ async def test_document_upload_and_job_flow(async_client: AsyncClient, tmp_path:
     facts_response = await async_client.get(f"/api/v1/documents/{doc['id']}/facts", headers=headers)
     assert facts_response.status_code == 200
     facts = facts_response.json()
-    assert len(facts) >= 1
+    assert len(facts) >= 3
 
     runs_response = await async_client.get(f"/api/v1/documents/{doc['id']}/runs", headers=headers)
     assert runs_response.status_code == 200
