@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     jwt_secret_key: str = "change-me"
     jwt_algorithm: str = "HS256"
     jwt_access_token_exp_minutes: int = 60
+    storage_root: str = "storage"
 
 
 settings = Settings()
