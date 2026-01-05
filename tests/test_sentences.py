@@ -150,6 +150,13 @@ async def test_sentence_and_fact_links(async_client: AsyncClient) -> None:
     verified_sentence = verify_response.json()
     assert verified_sentence["supported"] is True
 
+    runs_response = await async_client.get(
+        f"/api/v1/paragraphs/{paragraph['id']}/runs", headers=headers
+    )
+    assert runs_response.status_code == 200
+    runs = runs_response.json()
+    assert any(run["run_type"] == "VERIFIER" for run in runs)
+
 
 @pytest.mark.anyio
 async def test_verify_requires_fact_links(async_client: AsyncClient) -> None:

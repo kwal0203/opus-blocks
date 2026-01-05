@@ -4,6 +4,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from opus_blocks.core.config import settings
 from opus_blocks.models.fact import Fact
 from opus_blocks.models.manuscript import Manuscript
 from opus_blocks.models.paragraph import Paragraph
@@ -12,6 +13,7 @@ from opus_blocks.models.sentence_fact_link import SentenceFactLink
 from opus_blocks.schemas.sentence import SentenceCreate
 from opus_blocks.schemas.sentence_fact_link import SentenceFactLinkCreate
 from opus_blocks.schemas.verification import SentenceVerificationUpdate
+from opus_blocks.services.runs import create_run
 
 
 async def create_sentence(
@@ -134,6 +136,24 @@ async def update_sentence_verification(
     sentence.verifier_failure_modes = update.verifier_failure_modes
     sentence.verifier_explanation = update.verifier_explanation
     session.add(sentence)
+
     await session.commit()
     await session.refresh(sentence)
+
+    await create_run(
+        session,
+        owner_id=owner_id,
+        run_type="VERIFIER",
+        paragraph_id=sentence.paragraph_id,
+        document_id=None,
+        provider=settings.llm_provider,
+        model=settings.llm_model,
+        prompt_version=settings.llm_prompt_version,
+        inputs_json={"sentence_id": str(sentence.id)},
+        outputs_json={
+            "supported": update.supported,
+            "failure_modes": update.verifier_failure_modes,
+            "explanation": update.verifier_explanation,
+        },
+    )
     return sentence
