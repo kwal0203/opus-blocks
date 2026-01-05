@@ -59,3 +59,12 @@ async def list_paragraph_runs(
         .order_by(Run.created_at.asc())
     )
     return list(result.scalars().all())
+
+
+async def list_document_runs(session: AsyncSession, owner_id: UUID, document_id: UUID) -> list[Run]:
+    result = await session.execute(
+        select(Run)
+        .where(Run.document_id == document_id, Run.owner_id == owner_id)
+        .order_by(Run.created_at.asc())
+    )
+    return list(result.scalars().all())
