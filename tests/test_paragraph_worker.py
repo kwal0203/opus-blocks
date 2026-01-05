@@ -1,5 +1,6 @@
 import os
 import uuid
+from pathlib import Path
 
 import pytest
 from httpx import AsyncClient
@@ -24,7 +25,9 @@ async def _register_and_login(async_client: AsyncClient) -> str:
     return login_response.json()["access_token"]
 
 
-async def _create_paragraph(async_client: AsyncClient, token: str) -> dict:
+async def _create_paragraph(
+    async_client: AsyncClient, token: str, allowed_fact_ids: list[str] | None = None
+) -> dict:
     headers = {"Authorization": f"Bearer {token}"}
 
     manuscript_response = await async_client.post(
@@ -43,7 +46,7 @@ async def _create_paragraph(async_client: AsyncClient, token: str) -> dict:
             "evidence_sentences": 2,
             "conclusion_sentence": True,
         },
-        "allowed_fact_ids": [],
+        "allowed_fact_ids": allowed_fact_ids or [],
         "style": {
             "tense": "present",
             "voice": "academic",
@@ -63,55 +66,140 @@ async def _create_paragraph(async_client: AsyncClient, token: str) -> dict:
     return paragraph_response.json()
 
 
-@pytest.mark.anyio
-async def test_worker_updates_generate_and_verify(async_client: AsyncClient) -> None:
-    token = await _register_and_login(async_client)
+async def _create_fact(async_client: AsyncClient, token: str) -> dict:
     headers = {"Authorization": f"Bearer {token}"}
-    paragraph = await _create_paragraph(async_client, token)
-
-    generate_response = await async_client.post(
-        f"/api/v1/paragraphs/{paragraph['id']}/generate", headers=headers
+    document_response = await async_client.post(
+        "/api/v1/documents/upload",
+        files={"file": ("example.pdf", b"%PDF-1.4 test", "application/pdf")},
+        headers=headers,
     )
-    assert generate_response.status_code == 200
-    generate_job = generate_response.json()
+    assert document_response.status_code == 201
+    document = document_response.json()
 
-    original_url = settings.database_url
-    settings.database_url = os.environ["OPUS_BLOCKS_TEST_DATABASE_URL"]
+    fact_response = await async_client.post(
+        f"/api/v1/documents/{document['id']}/facts",
+        json={
+            "content": "PDF fact content.",
+            "qualifiers": {},
+            "confidence": 1.0,
+            "is_uncertain": False,
+            "span": {
+                "page": 1,
+                "start_char": 0,
+                "end_char": 5,
+                "quote": "facts",
+            },
+        },
+        headers=headers,
+    )
+    assert fact_response.status_code == 201
+    return fact_response.json()
+
+
+@pytest.mark.anyio
+async def test_worker_updates_generate_and_verify(
+    async_client: AsyncClient, tmp_path: Path
+) -> None:
+    original_root = settings.storage_root
+    settings.storage_root = str(tmp_path)
     try:
-        await run_generate_job(uuid.UUID(generate_job["id"]), uuid.UUID(paragraph["id"]))
+        token = await _register_and_login(async_client)
+        headers = {"Authorization": f"Bearer {token}"}
+        paragraph = await _create_paragraph(async_client, token)
+
+        generate_response = await async_client.post(
+            f"/api/v1/paragraphs/{paragraph['id']}/generate", headers=headers
+        )
+        assert generate_response.status_code == 200
+        generate_job = generate_response.json()
+
+        original_url = settings.database_url
+        settings.database_url = os.environ["OPUS_BLOCKS_TEST_DATABASE_URL"]
+        try:
+            await run_generate_job(uuid.UUID(generate_job["id"]), uuid.UUID(paragraph["id"]))
+        finally:
+            settings.database_url = original_url
+
+        job_response = await async_client.get(f"/api/v1/jobs/{generate_job['id']}", headers=headers)
+        assert job_response.status_code == 200
+        assert job_response.json()["status"] == "SUCCEEDED"
+
+        paragraph_response = await async_client.get(
+            f"/api/v1/paragraphs/{paragraph['id']}", headers=headers
+        )
+        assert paragraph_response.status_code == 200
+        assert paragraph_response.json()["status"] == "PENDING_VERIFY"
+
+        sentences_response = await async_client.get(
+            f"/api/v1/sentences/paragraph/{paragraph['id']}", headers=headers
+        )
+        assert sentences_response.status_code == 200
+        sentences = sentences_response.json()
+        assert len(sentences) == 1
+        assert sentences[0]["text"] == "Placeholder generated sentence."
+
+        verify_response = await async_client.post(
+            f"/api/v1/paragraphs/{paragraph['id']}/verify", headers=headers
+        )
+        assert verify_response.status_code == 200
+        verify_job = verify_response.json()
+
+        settings.database_url = os.environ["OPUS_BLOCKS_TEST_DATABASE_URL"]
+        try:
+            await run_verify_job(uuid.UUID(verify_job["id"]), uuid.UUID(paragraph["id"]))
+        finally:
+            settings.database_url = original_url
+
+        verify_job_response = await async_client.get(
+            f"/api/v1/jobs/{verify_job['id']}", headers=headers
+        )
+        assert verify_job_response.status_code == 200
+        assert verify_job_response.json()["status"] == "SUCCEEDED"
+
+        paragraph_after_verify = await async_client.get(
+            f"/api/v1/paragraphs/{paragraph['id']}", headers=headers
+        )
+        assert paragraph_after_verify.status_code == 200
+        assert paragraph_after_verify.json()["status"] == "VERIFIED"
     finally:
-        settings.database_url = original_url
+        settings.storage_root = original_root
 
-    job_response = await async_client.get(f"/api/v1/jobs/{generate_job['id']}", headers=headers)
-    assert job_response.status_code == 200
-    assert job_response.json()["status"] == "SUCCEEDED"
 
-    paragraph_response = await async_client.get(
-        f"/api/v1/paragraphs/{paragraph['id']}", headers=headers
-    )
-    assert paragraph_response.status_code == 200
-    assert paragraph_response.json()["status"] == "PENDING_VERIFY"
-
-    verify_response = await async_client.post(
-        f"/api/v1/paragraphs/{paragraph['id']}/verify", headers=headers
-    )
-    assert verify_response.status_code == 200
-    verify_job = verify_response.json()
-
-    settings.database_url = os.environ["OPUS_BLOCKS_TEST_DATABASE_URL"]
+@pytest.mark.anyio
+async def test_generate_creates_sentence_links(async_client: AsyncClient, tmp_path: Path) -> None:
+    original_root = settings.storage_root
+    settings.storage_root = str(tmp_path)
     try:
-        await run_verify_job(uuid.UUID(verify_job["id"]), uuid.UUID(paragraph["id"]))
+        token = await _register_and_login(async_client)
+        headers = {"Authorization": f"Bearer {token}"}
+        fact = await _create_fact(async_client, token)
+        paragraph = await _create_paragraph(async_client, token, [fact["id"]])
+
+        generate_response = await async_client.post(
+            f"/api/v1/paragraphs/{paragraph['id']}/generate", headers=headers
+        )
+        assert generate_response.status_code == 200
+        generate_job = generate_response.json()
+
+        original_url = settings.database_url
+        settings.database_url = os.environ["OPUS_BLOCKS_TEST_DATABASE_URL"]
+        try:
+            await run_generate_job(uuid.UUID(generate_job["id"]), uuid.UUID(paragraph["id"]))
+        finally:
+            settings.database_url = original_url
+
+        sentences_response = await async_client.get(
+            f"/api/v1/sentences/paragraph/{paragraph['id']}", headers=headers
+        )
+        assert sentences_response.status_code == 200
+        sentence = sentences_response.json()[0]
+
+        links_response = await async_client.get(
+            f"/api/v1/sentences/{sentence['id']}/links", headers=headers
+        )
+        assert links_response.status_code == 200
+        links = links_response.json()
+        assert len(links) == 1
+        assert links[0]["fact_id"] == fact["id"]
     finally:
-        settings.database_url = original_url
-
-    verify_job_response = await async_client.get(
-        f"/api/v1/jobs/{verify_job['id']}", headers=headers
-    )
-    assert verify_job_response.status_code == 200
-    assert verify_job_response.json()["status"] == "SUCCEEDED"
-
-    paragraph_after_verify = await async_client.get(
-        f"/api/v1/paragraphs/{paragraph['id']}", headers=headers
-    )
-    assert paragraph_after_verify.status_code == 200
-    assert paragraph_after_verify.json()["status"] == "VERIFIED"
+        settings.storage_root = original_root
