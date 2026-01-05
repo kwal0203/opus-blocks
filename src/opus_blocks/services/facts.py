@@ -71,7 +71,7 @@ async def list_document_facts_with_spans(
         .outerjoin(Span, Fact.span_id == Span.id)
         .where(Fact.document_id == document_id, Fact.owner_id == owner_id)
     )
-    return list(facts_result.all())
+    return list(facts_result.tuples().all())
 
 
 async def list_manuscript_facts(
@@ -112,7 +112,7 @@ async def list_manuscript_facts_with_spans(
             Fact.owner_id == owner_id,
         )
     )
-    return list(facts_result.all())
+    return list(facts_result.tuples().all())
 
 
 async def create_fact_with_span(
