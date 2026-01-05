@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     jwt_access_token_exp_minutes: int = 60
     storage_root: str = "storage"
+    llm_provider: str = "openai"
+    llm_model: str = "gpt-4o-mini"
+    llm_prompt_version: str = "v1"
 
 
 settings = Settings()

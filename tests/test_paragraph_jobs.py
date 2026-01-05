@@ -86,4 +86,13 @@ async def test_generate_and_verify_jobs(async_client: AsyncClient) -> None:
         f"/api/v1/paragraphs/{paragraph['id']}", headers=headers
     )
     assert paragraph_after_verify.status_code == 200
-    assert paragraph_after_verify.json()["status"] == "PENDING_VERIFY"
+    paragraph_payload = paragraph_after_verify.json()
+    assert paragraph_payload["status"] == "PENDING_VERIFY"
+
+    runs_response = await async_client.get(
+        f"/api/v1/paragraphs/{paragraph['id']}/runs", headers=headers
+    )
+    assert runs_response.status_code == 200
+    runs = runs_response.json()
+    assert [run["run_type"] for run in runs] == ["WRITER", "VERIFIER"]
+    assert paragraph_payload["latest_run_id"] == runs[0]["id"]
