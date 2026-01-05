@@ -6,6 +6,7 @@ from opus_blocks.api.deps import CurrentUser, DbSession
 from opus_blocks.schemas.document import DocumentRead
 from opus_blocks.schemas.fact import FactRead, FactWithSpanRead
 from opus_blocks.schemas.job import JobRead
+from opus_blocks.schemas.run import RunRead
 from opus_blocks.schemas.span import FactSpanCreate, SpanRead
 from opus_blocks.services.documents import create_document, get_document
 from opus_blocks.services.facts import (
@@ -14,6 +15,7 @@ from opus_blocks.services.facts import (
     list_document_facts_with_spans,
 )
 from opus_blocks.services.jobs import create_job
+from opus_blocks.services.runs import list_document_runs
 
 router = APIRouter(prefix="/documents")
 
@@ -61,6 +63,16 @@ async def extract_facts(
 
     job = await create_job(session, current_user.id, "EXTRACT_FACTS", document.id)
     return JobRead.model_validate(job)
+
+
+@router.get("/{document_id}/runs", response_model=list[RunRead])
+async def list_document_runs_endpoint(
+    document_id: UUID,
+    session: DbSession,
+    current_user: CurrentUser,
+) -> list[RunRead]:
+    runs = await list_document_runs(session, owner_id=current_user.id, document_id=document_id)
+    return [RunRead.model_validate(run) for run in runs]
 
 
 @router.get("/{document_id}/facts", response_model=list[FactRead])

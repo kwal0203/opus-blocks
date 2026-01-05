@@ -71,4 +71,10 @@ async def test_document_upload_and_job_flow(async_client: AsyncClient, tmp_path:
     assert doc_after.status_code == 200
     assert doc_after.json()["status"] == "FACTS_READY"
 
+    runs_response = await async_client.get(f"/api/v1/documents/{doc['id']}/runs", headers=headers)
+    assert runs_response.status_code == 200
+    runs = runs_response.json()
+    assert len(runs) == 1
+    assert runs[0]["run_type"] == "LIBRARIAN"
+
     settings.storage_root = original_root

@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async
 from opus_blocks.core.config import settings
 from opus_blocks.models.document import Document
 from opus_blocks.models.job import Job
+from opus_blocks.services.runs import create_run
 from opus_blocks.tasks.celery_app import celery_app
 
 
@@ -29,6 +30,20 @@ async def run_extract_facts_job(job_id: UUID, document_id: UUID) -> None:
         job.status = "RUNNING"
         session.add(job)
         await session.commit()
+
+        if job.owner_id:
+            await create_run(
+                session,
+                owner_id=job.owner_id,
+                run_type="LIBRARIAN",
+                paragraph_id=None,
+                document_id=document.id,
+                provider=settings.llm_provider,
+                model=settings.llm_model,
+                prompt_version=settings.llm_prompt_version,
+                inputs_json={"document_id": str(document.id)},
+                outputs_json={"status": "stub"},
+            )
 
         document.status = "FACTS_READY"
         job.status = "SUCCEEDED"
