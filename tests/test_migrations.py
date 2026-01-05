@@ -1,9 +1,9 @@
 import os
 
 import pytest
-from alembic.config import Config
 
 from alembic import command
+from alembic.config import Config
 
 
 def test_alembic_upgrade_and_downgrade() -> None:
@@ -13,6 +13,8 @@ def test_alembic_upgrade_and_downgrade() -> None:
 
     config = Config("alembic.ini")
     config.set_main_option("sqlalchemy.url", database_url)
+    config.set_section_option(config.config_ini_section, "sqlalchemy.url", database_url)
 
     command.upgrade(config, "head")
     command.downgrade(config, "base")
+    command.upgrade(config, "head")

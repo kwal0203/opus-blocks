@@ -1,4 +1,5 @@
 import asyncio
+import os
 
 from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
@@ -9,7 +10,11 @@ from opus_blocks.core.config import settings
 from opus_blocks.db.base import Base
 
 config = context.config
-if not config.get_main_option("sqlalchemy.url"):
+env_database_url = os.environ.get("OPUS_BLOCKS_TEST_DATABASE_URL") or os.environ.get("DATABASE_URL")
+if env_database_url:
+    config.set_main_option("sqlalchemy.url", env_database_url)
+    config.set_section_option(config.config_ini_section, "sqlalchemy.url", env_database_url)
+elif not config.get_main_option("sqlalchemy.url"):
     config.set_main_option("sqlalchemy.url", settings.database_url)
 
 target_metadata = Base.metadata
