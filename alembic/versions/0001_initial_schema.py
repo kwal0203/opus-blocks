@@ -1,13 +1,15 @@
 """Initial schema
 
 Revision ID: 0001_initial_schema
-Revises: 
+Revises:
 Create Date: 2024-09-20 00:00:00
 
 """
-from alembic import op
+
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
+
+from alembic import op
 
 revision = "0001_initial_schema"
 down_revision = None
@@ -21,7 +23,12 @@ def upgrade() -> None:
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True, nullable=False),
         sa.Column("email", sa.Text(), nullable=False),
         sa.Column("password_hash", sa.Text(), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
     )
     op.create_index("users_email_uq", "users", ["email"], unique=True)
 
@@ -45,15 +52,23 @@ def upgrade() -> None:
             server_default=sa.text("'{}'::jsonb"),
             nullable=False,
         ),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.CheckConstraint("source_type IN ('PDF')", name="documents_source_type_check"),
         sa.CheckConstraint(
-            "status IN ('UPLOADED','EXTRACTING_FACTS','FACTS_READY','FAILED_PARSE','FAILED_EXTRACTION')",
+            "status IN ('UPLOADED','EXTRACTING_FACTS','FACTS_READY',"
+            "'FAILED_PARSE','FAILED_EXTRACTION')",
             name="documents_status_check",
         ),
     )
     op.create_index("documents_owner_idx", "documents", ["owner_id"], unique=False)
-    op.create_index("documents_owner_hash_uq", "documents", ["owner_id", "content_hash"], unique=True)
+    op.create_index(
+        "documents_owner_hash_uq", "documents", ["owner_id", "content_hash"], unique=True
+    )
 
     op.create_table(
         "spans",
@@ -68,7 +83,12 @@ def upgrade() -> None:
         sa.Column("start_char", sa.Integer(), nullable=True),
         sa.Column("end_char", sa.Integer(), nullable=True),
         sa.Column("quote", sa.Text(), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.CheckConstraint(
             "(start_char IS NULL AND end_char IS NULL) OR (start_char <= end_char)",
             name="spans_char_bounds_check",
@@ -108,7 +128,12 @@ def upgrade() -> None:
         sa.Column("confidence", sa.Float(), nullable=False),
         sa.Column("is_uncertain", sa.Boolean(), server_default=sa.text("false"), nullable=False),
         sa.Column("created_by", sa.Text(), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.CheckConstraint("source_type IN ('PDF','MANUAL')", name="facts_source_type_check"),
         sa.CheckConstraint("confidence >= 0 AND confidence <= 1", name="facts_confidence_check"),
         sa.CheckConstraint(
@@ -135,7 +160,12 @@ def upgrade() -> None:
         ),
         sa.Column("title", sa.Text(), nullable=False),
         sa.Column("description", sa.Text(), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
     )
     op.create_index("manuscripts_owner_idx", "manuscripts", ["owner_id"], unique=False)
 
@@ -177,14 +207,25 @@ def upgrade() -> None:
         ),
         sa.Column("status", sa.Text(), nullable=False),
         sa.Column("latest_run_id", postgresql.UUID(as_uuid=True), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.CheckConstraint(
             "section IN ('Introduction','Methods','Results','Discussion')",
             name="paragraphs_section_check",
         ),
         sa.CheckConstraint(
-            "status IN ('CREATED','GENERATING','NEEDS_REVISION','VERIFIED','PENDING_VERIFY','FAILED_GENERATION')",
+            "status IN ('CREATED','GENERATING','NEEDS_REVISION','VERIFIED',"
+            "'PENDING_VERIFY','FAILED_GENERATION')",
             name="paragraphs_status_check",
         ),
     )
@@ -212,9 +253,19 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.Column("verifier_explanation", sa.Text(), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
-        sa.CheckConstraint("\"order\" >= 1", name="sentences_order_check"),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.CheckConstraint('"order" >= 1', name="sentences_order_check"),
         sa.CheckConstraint(
             "sentence_type IN ('topic','evidence','conclusion','transition')",
             name="sentences_type_check",
@@ -241,13 +292,20 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.Column("score", sa.Float(), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.CheckConstraint(
             "score IS NULL OR (score >= 0 AND score <= 1)",
             name="sentence_fact_links_score_check",
         ),
     )
-    op.create_index("sentence_fact_links_fact_idx", "sentence_fact_links", ["fact_id"], unique=False)
+    op.create_index(
+        "sentence_fact_links_fact_idx", "sentence_fact_links", ["fact_id"], unique=False
+    )
 
     op.create_table(
         "runs",
@@ -282,7 +340,12 @@ def upgrade() -> None:
         sa.Column("cost_usd", sa.Float(), nullable=True),
         sa.Column("latency_ms", sa.Integer(), nullable=True),
         sa.Column("trace_id", sa.Text(), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.CheckConstraint(
             "run_type IN ('LIBRARIAN','WRITER','VERIFIER','REWRITER')",
             name="runs_type_check",
@@ -313,10 +376,21 @@ def upgrade() -> None:
         ),
         sa.Column("error", sa.Text(), nullable=True),
         sa.Column("trace_id", sa.Text(), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.CheckConstraint(
-            "job_type IN ('EXTRACT_FACTS','GENERATE_PARAGRAPH','VERIFY_PARAGRAPH','REGENERATE_SENTENCES')",
+            "job_type IN ('EXTRACT_FACTS','GENERATE_PARAGRAPH','VERIFY_PARAGRAPH',"
+            "'REGENERATE_SENTENCES')",
             name="jobs_type_check",
         ),
         sa.CheckConstraint(

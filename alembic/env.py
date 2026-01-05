@@ -1,12 +1,12 @@
 import asyncio
 
-from alembic import context
 from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
+import opus_blocks.models  # noqa: F401
+from alembic import context
 from opus_blocks.core.config import settings
 from opus_blocks.db.base import Base
-import opus_blocks.models  # noqa: F401
 
 config = context.config
 if not config.get_main_option("sqlalchemy.url"):

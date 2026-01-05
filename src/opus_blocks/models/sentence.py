@@ -1,7 +1,15 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import ARRAY, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
@@ -36,7 +44,7 @@ class Sentence(Base):
     )
 
     __table_args__ = (
-        CheckConstraint("\"order\" >= 1", name="sentences_order_check"),
+        CheckConstraint('"order" >= 1', name="sentences_order_check"),
         CheckConstraint(
             "sentence_type IN ('topic','evidence','conclusion','transition')",
             name="sentences_type_check",

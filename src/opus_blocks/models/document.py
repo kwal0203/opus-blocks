@@ -29,7 +29,8 @@ class Document(Base):
     __table_args__ = (
         CheckConstraint("source_type IN ('PDF')", name="documents_source_type_check"),
         CheckConstraint(
-            "status IN ('UPLOADED','EXTRACTING_FACTS','FACTS_READY','FAILED_PARSE','FAILED_EXTRACTION')",
+            "status IN ('UPLOADED','EXTRACTING_FACTS','FACTS_READY',"
+            "'FAILED_PARSE','FAILED_EXTRACTION')",
             name="documents_status_check",
         ),
         UniqueConstraint("owner_id", "content_hash", name="documents_owner_hash_uq"),
