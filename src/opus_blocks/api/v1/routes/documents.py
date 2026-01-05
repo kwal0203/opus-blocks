@@ -4,10 +4,15 @@ from fastapi import APIRouter, HTTPException, UploadFile, status
 
 from opus_blocks.api.deps import CurrentUser, DbSession
 from opus_blocks.schemas.document import DocumentRead
-from opus_blocks.schemas.fact import FactRead
+from opus_blocks.schemas.fact import FactRead, FactWithSpanRead
 from opus_blocks.schemas.job import JobRead
+from opus_blocks.schemas.span import FactSpanCreate, SpanRead
 from opus_blocks.services.documents import create_document, get_document
-from opus_blocks.services.facts import list_document_facts
+from opus_blocks.services.facts import (
+    create_fact_with_span,
+    list_document_facts,
+    list_document_facts_with_spans,
+)
 from opus_blocks.services.jobs import create_job
 
 router = APIRouter(prefix="/documents")
@@ -54,3 +59,34 @@ async def list_facts(
 ) -> list[FactRead]:
     facts = await list_document_facts(session, owner_id=current_user.id, document_id=document_id)
     return [FactRead.model_validate(fact) for fact in facts]
+
+
+@router.get("/{document_id}/facts/with-spans", response_model=list[FactWithSpanRead])
+async def list_facts_with_spans(
+    document_id: UUID,
+    session: DbSession,
+    current_user: CurrentUser,
+) -> list[FactWithSpanRead]:
+    facts = await list_document_facts_with_spans(
+        session, owner_id=current_user.id, document_id=document_id
+    )
+    response: list[FactWithSpanRead] = []
+    for fact, span in facts:
+        payload = FactWithSpanRead.model_validate(fact)
+        if span:
+            payload.span = SpanRead.model_validate(span)
+        response.append(payload)
+    return response
+
+
+@router.post("/{document_id}/facts", response_model=FactRead, status_code=status.HTTP_201_CREATED)
+async def create_fact_for_document(
+    document_id: UUID,
+    fact_in: FactSpanCreate,
+    session: DbSession,
+    current_user: CurrentUser,
+) -> FactRead:
+    fact = await create_fact_with_span(
+        session, owner_id=current_user.id, document_id=document_id, fact_in=fact_in
+    )
+    return FactRead.model_validate(fact)
