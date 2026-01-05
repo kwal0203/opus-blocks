@@ -3,8 +3,11 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, status
 
 from opus_blocks.api.deps import CurrentUser, DbSession
+from opus_blocks.schemas.fact import FactRead
 from opus_blocks.schemas.manuscript import ManuscriptCreate, ManuscriptRead
+from opus_blocks.services.facts import list_manuscript_facts
 from opus_blocks.services.manuscripts import create_manuscript, get_manuscript
+from opus_blocks.services.manuscripts_documents import add_document_to_manuscript
 
 router = APIRouter(prefix="/manuscripts")
 
@@ -27,3 +30,28 @@ async def get_manuscript_endpoint(
     if not manuscript:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Manuscript not found")
     return ManuscriptRead.model_validate(manuscript)
+
+
+@router.post(
+    "/{manuscript_id}/documents/{document_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def attach_document(
+    manuscript_id: UUID,
+    document_id: UUID,
+    session: DbSession,
+    user: CurrentUser,
+) -> None:
+    await add_document_to_manuscript(
+        session, owner_id=user.id, manuscript_id=manuscript_id, document_id=document_id
+    )
+
+
+@router.get("/{manuscript_id}/facts", response_model=list[FactRead])
+async def list_manuscript_facts_endpoint(
+    manuscript_id: UUID,
+    session: DbSession,
+    user: CurrentUser,
+) -> list[FactRead]:
+    facts = await list_manuscript_facts(session, owner_id=user.id, manuscript_id=manuscript_id)
+    return [FactRead.model_validate(fact) for fact in facts]

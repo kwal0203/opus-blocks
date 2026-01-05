@@ -4,8 +4,10 @@ from fastapi import APIRouter, HTTPException, UploadFile, status
 
 from opus_blocks.api.deps import CurrentUser, DbSession
 from opus_blocks.schemas.document import DocumentRead
+from opus_blocks.schemas.fact import FactRead
 from opus_blocks.schemas.job import JobRead
 from opus_blocks.services.documents import create_document, get_document
+from opus_blocks.services.facts import list_document_facts
 from opus_blocks.services.jobs import create_job
 
 router = APIRouter(prefix="/documents")
@@ -42,3 +44,13 @@ async def extract_facts(
 
     job = await create_job(session, current_user.id, "EXTRACT_FACTS", document.id)
     return JobRead.model_validate(job)
+
+
+@router.get("/{document_id}/facts", response_model=list[FactRead])
+async def list_facts(
+    document_id: UUID,
+    session: DbSession,
+    current_user: CurrentUser,
+) -> list[FactRead]:
+    facts = await list_document_facts(session, owner_id=current_user.id, document_id=document_id)
+    return [FactRead.model_validate(fact) for fact in facts]
