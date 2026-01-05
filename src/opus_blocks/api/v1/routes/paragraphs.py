@@ -134,7 +134,7 @@ async def get_paragraph_view(
         sentence_links = await list_sentence_fact_links(
             session, owner_id=user.id, sentence_id=sentence.id
         )
-        links.extend(sentence_links)
+        links.extend(SentenceFactLinkRead.model_validate(link) for link in sentence_links)
 
     facts = await list_manuscript_facts(
         session, owner_id=user.id, manuscript_id=paragraph.manuscript_id
@@ -143,6 +143,6 @@ async def get_paragraph_view(
     return ParagraphView(
         paragraph=ParagraphRead.model_validate(paragraph),
         sentences=[SentenceRead.model_validate(sentence) for sentence in sentences],
-        links=[SentenceFactLinkRead.model_validate(link) for link in links],
+        links=links,
         facts=[FactRead.model_validate(fact) for fact in facts],
     )
