@@ -5,6 +5,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 
+from opus_blocks.contracts.agent_contracts import validate_librarian_output
 from opus_blocks.core.config import settings
 from opus_blocks.models.document import Document
 from opus_blocks.models.fact import Fact
@@ -80,6 +81,43 @@ async def run_extract_facts_job(job_id: UUID, document_id: UUID) -> None:
                     True,
                 ),
             ]
+            output_payload = {
+                "facts": [
+                    {
+                        "content": content,
+                        "source_type": "PDF",
+                        "source_span": {
+                            "document_id": str(document.id),
+                            "page": page,
+                            "start_char": start_char,
+                            "end_char": end_char,
+                            "quote": quote,
+                        },
+                        "qualifiers": {},
+                        "confidence": confidence,
+                    }
+                    for (
+                        page,
+                        start_char,
+                        end_char,
+                        quote,
+                        content,
+                        confidence,
+                        _,
+                    ) in placeholders
+                ],
+                "uncertain_facts": [],
+            }
+            try:
+                validate_librarian_output(output_payload)
+            except ValueError:
+                job.status = "FAILED"
+                document.status = "FAILED_EXTRACTION"
+                session.add(job)
+                session.add(document)
+                await session.commit()
+                await engine.dispose()
+                return
             for (
                 page,
                 start_char,
