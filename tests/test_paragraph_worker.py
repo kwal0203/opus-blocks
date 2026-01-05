@@ -105,7 +105,8 @@ async def test_worker_updates_generate_and_verify(
     try:
         token = await _register_and_login(async_client)
         headers = {"Authorization": f"Bearer {token}"}
-        paragraph = await _create_paragraph(async_client, token)
+        fact = await _create_fact(async_client, token)
+        paragraph = await _create_paragraph(async_client, token, [fact["id"]])
 
         generate_response = await async_client.post(
             f"/api/v1/paragraphs/{paragraph['id']}/generate", headers=headers
