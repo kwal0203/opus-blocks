@@ -17,6 +17,7 @@ dependencies = [
     "redis>=5.0.4",
     "openai>=1.30.0",
     "email-validator>=2.1.1",
+    "python-jose[cryptography]>=3.3.0",
 ]
 
 [build-system]
