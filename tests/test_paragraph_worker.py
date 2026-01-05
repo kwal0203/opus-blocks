@@ -166,6 +166,51 @@ async def test_worker_updates_generate_and_verify(
 
 
 @pytest.mark.anyio
+async def test_verify_rollup_requires_supported_sentences(
+    async_client: AsyncClient, tmp_path: Path
+) -> None:
+    original_root = settings.storage_root
+    settings.storage_root = str(tmp_path)
+    try:
+        token = await _register_and_login(async_client)
+        headers = {"Authorization": f"Bearer {token}"}
+        paragraph = await _create_paragraph(async_client, token)
+
+        sentence_response = await async_client.post(
+            "/api/v1/sentences",
+            json={
+                "paragraph_id": paragraph["id"],
+                "order": 1,
+                "sentence_type": "topic",
+                "text": "Needs verification.",
+                "is_user_edited": False,
+            },
+            headers=headers,
+        )
+        assert sentence_response.status_code == 201
+        sentence = sentence_response.json()
+
+        verify_response = await async_client.post(
+            f"/api/v1/sentences/{sentence['id']}/verify",
+            json={
+                "supported": False,
+                "verifier_failure_modes": ["missing_evidence"],
+                "verifier_explanation": None,
+            },
+            headers=headers,
+        )
+        assert verify_response.status_code == 200
+
+        rollup_response = await async_client.post(
+            f"/api/v1/paragraphs/{paragraph['id']}/verify-rollup", headers=headers
+        )
+        assert rollup_response.status_code == 200
+        assert rollup_response.json()["status"] == "NEEDS_REVISION"
+    finally:
+        settings.storage_root = original_root
+
+
+@pytest.mark.anyio
 async def test_generate_creates_sentence_links(async_client: AsyncClient, tmp_path: Path) -> None:
     original_root = settings.storage_root
     settings.storage_root = str(tmp_path)
