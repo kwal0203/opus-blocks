@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from opus_blocks.models.fact import Fact
 from opus_blocks.models.manuscript import Manuscript
 from opus_blocks.models.paragraph import Paragraph
+from opus_blocks.models.sentence import Sentence
 from opus_blocks.schemas.paragraph import ParagraphSpecInput
 
 
@@ -71,3 +72,27 @@ async def get_paragraph(
         .where(Paragraph.id == paragraph_id, Manuscript.owner_id == owner_id)
     )
     return result.scalar_one_or_none()
+
+
+async def update_paragraph_verification(
+    session: AsyncSession, owner_id: UUID, paragraph_id: UUID
+) -> Paragraph:
+    paragraph = await get_paragraph(session, owner_id=owner_id, paragraph_id=paragraph_id)
+    if not paragraph:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Paragraph not found")
+
+    sentences_result = await session.execute(
+        select(Sentence).where(Sentence.paragraph_id == paragraph_id)
+    )
+    sentences = list(sentences_result.scalars().all())
+    if not sentences:
+        paragraph.status = "NEEDS_REVISION"
+    elif all(sentence.supported for sentence in sentences):
+        paragraph.status = "VERIFIED"
+    else:
+        paragraph.status = "NEEDS_REVISION"
+
+    session.add(paragraph)
+    await session.commit()
+    await session.refresh(paragraph)
+    return paragraph

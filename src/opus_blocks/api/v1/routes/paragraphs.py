@@ -8,7 +8,11 @@ from opus_blocks.schemas.job import JobRead
 from opus_blocks.schemas.paragraph import ParagraphCreate, ParagraphRead
 from opus_blocks.schemas.run import RunRead
 from opus_blocks.services.jobs import create_job
-from opus_blocks.services.paragraphs import create_paragraph, get_paragraph
+from opus_blocks.services.paragraphs import (
+    create_paragraph,
+    get_paragraph,
+    update_paragraph_verification,
+)
 from opus_blocks.services.runs import create_run, list_paragraph_runs
 
 router = APIRouter(prefix="/paragraphs")
@@ -98,3 +102,13 @@ async def verify_paragraph(paragraph_id: UUID, session: DbSession, user: Current
 async def list_runs(paragraph_id: UUID, session: DbSession, user: CurrentUser) -> list[RunRead]:
     runs = await list_paragraph_runs(session, owner_id=user.id, paragraph_id=paragraph_id)
     return [RunRead.model_validate(run) for run in runs]
+
+
+@router.post("/{paragraph_id}/verify-rollup", response_model=ParagraphRead)
+async def verify_paragraph_rollup(
+    paragraph_id: UUID, session: DbSession, user: CurrentUser
+) -> ParagraphRead:
+    paragraph = await update_paragraph_verification(
+        session, owner_id=user.id, paragraph_id=paragraph_id
+    )
+    return ParagraphRead.model_validate(paragraph)
