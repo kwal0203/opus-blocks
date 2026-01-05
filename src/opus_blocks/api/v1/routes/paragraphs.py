@@ -4,9 +4,14 @@ from fastapi import APIRouter, HTTPException, status
 
 from opus_blocks.api.deps import CurrentUser, DbSession
 from opus_blocks.core.config import settings
+from opus_blocks.schemas.fact import FactRead
 from opus_blocks.schemas.job import JobRead
 from opus_blocks.schemas.paragraph import ParagraphCreate, ParagraphRead
+from opus_blocks.schemas.paragraph_view import ParagraphView
 from opus_blocks.schemas.run import RunRead
+from opus_blocks.schemas.sentence import SentenceRead
+from opus_blocks.schemas.sentence_fact_link import SentenceFactLinkRead
+from opus_blocks.services.facts import list_manuscript_facts
 from opus_blocks.services.jobs import create_job
 from opus_blocks.services.paragraphs import (
     create_paragraph,
@@ -14,6 +19,7 @@ from opus_blocks.services.paragraphs import (
     update_paragraph_verification,
 )
 from opus_blocks.services.runs import create_run, list_paragraph_runs
+from opus_blocks.services.sentences import list_paragraph_sentences, list_sentence_fact_links
 
 router = APIRouter(prefix="/paragraphs")
 
@@ -112,3 +118,31 @@ async def verify_paragraph_rollup(
         session, owner_id=user.id, paragraph_id=paragraph_id
     )
     return ParagraphRead.model_validate(paragraph)
+
+
+@router.get("/{paragraph_id}/view", response_model=ParagraphView)
+async def get_paragraph_view(
+    paragraph_id: UUID, session: DbSession, user: CurrentUser
+) -> ParagraphView:
+    paragraph = await get_paragraph(session, owner_id=user.id, paragraph_id=paragraph_id)
+    if not paragraph:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Paragraph not found")
+
+    sentences = await list_paragraph_sentences(session, owner_id=user.id, paragraph_id=paragraph_id)
+    links: list[SentenceFactLinkRead] = []
+    for sentence in sentences:
+        sentence_links = await list_sentence_fact_links(
+            session, owner_id=user.id, sentence_id=sentence.id
+        )
+        links.extend(SentenceFactLinkRead.model_validate(link) for link in sentence_links)
+
+    facts = await list_manuscript_facts(
+        session, owner_id=user.id, manuscript_id=paragraph.manuscript_id
+    )
+
+    return ParagraphView(
+        paragraph=ParagraphRead.model_validate(paragraph),
+        sentences=[SentenceRead.model_validate(sentence) for sentence in sentences],
+        links=links,
+        facts=[FactRead.model_validate(fact) for fact in facts],
+    )
