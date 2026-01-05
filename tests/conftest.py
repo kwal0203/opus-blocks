@@ -1,11 +1,11 @@
 import os
 
 import pytest
+from alembic.config import Config
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from alembic import command
-from alembic.config import Config
 from opus_blocks.app import app
 from opus_blocks.db.session import get_session
 
