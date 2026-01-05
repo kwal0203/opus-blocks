@@ -33,6 +33,18 @@ async def upload_document(
     return DocumentRead.model_validate(document)
 
 
+@router.get("/{document_id}", response_model=DocumentRead)
+async def get_document_endpoint(
+    document_id: UUID,
+    session: DbSession,
+    current_user: CurrentUser,
+) -> DocumentRead:
+    document = await get_document(session, current_user.id, document_id)
+    if not document:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+    return DocumentRead.model_validate(document)
+
+
 @router.post("/{document_id}/extract_facts", response_model=JobRead)
 async def extract_facts(
     document_id: UUID,

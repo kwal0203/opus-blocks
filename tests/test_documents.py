@@ -1,3 +1,4 @@
+import os
 import uuid
 from pathlib import Path
 
@@ -5,6 +6,7 @@ import pytest
 from httpx import AsyncClient
 
 from opus_blocks.core.config import settings
+from opus_blocks.tasks.documents import run_extract_facts_job
 
 
 async def _register_and_login(async_client: AsyncClient) -> str:
@@ -53,4 +55,20 @@ async def test_document_upload_and_job_flow(async_client: AsyncClient, tmp_path:
     job_response = await async_client.get(f"/api/v1/jobs/{job['id']}", headers=headers)
     assert job_response.status_code == 200
     assert job_response.json()["id"] == job["id"]
+
+    original_db_url = settings.database_url
+    settings.database_url = os.environ["OPUS_BLOCKS_TEST_DATABASE_URL"]
+    try:
+        await run_extract_facts_job(uuid.UUID(job["id"]), uuid.UUID(doc["id"]))
+    finally:
+        settings.database_url = original_db_url
+
+    job_after = await async_client.get(f"/api/v1/jobs/{job['id']}", headers=headers)
+    assert job_after.status_code == 200
+    assert job_after.json()["status"] == "SUCCEEDED"
+
+    doc_after = await async_client.get(f"/api/v1/documents/{doc['id']}", headers=headers)
+    assert doc_after.status_code == 200
+    assert doc_after.json()["status"] == "FACTS_READY"
+
     settings.storage_root = original_root
