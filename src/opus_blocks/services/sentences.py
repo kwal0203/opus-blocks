@@ -11,6 +11,7 @@ from opus_blocks.models.sentence import Sentence
 from opus_blocks.models.sentence_fact_link import SentenceFactLink
 from opus_blocks.schemas.sentence import SentenceCreate
 from opus_blocks.schemas.sentence_fact_link import SentenceFactLinkCreate
+from opus_blocks.schemas.verification import SentenceVerificationUpdate
 
 
 async def create_sentence(
@@ -101,3 +102,38 @@ async def list_sentence_fact_links(
         select(SentenceFactLink).where(SentenceFactLink.sentence_id == sentence_id)
     )
     return list(links_result.scalars().all())
+
+
+async def update_sentence_verification(
+    session: AsyncSession,
+    owner_id: UUID,
+    sentence_id: UUID,
+    update: SentenceVerificationUpdate,
+) -> Sentence:
+    sentence_result = await session.execute(
+        select(Sentence)
+        .join(Paragraph, Sentence.paragraph_id == Paragraph.id)
+        .join(Manuscript, Paragraph.manuscript_id == Manuscript.id)
+        .where(Sentence.id == sentence_id, Manuscript.owner_id == owner_id)
+    )
+    sentence = sentence_result.scalar_one_or_none()
+    if not sentence:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sentence not found")
+
+    if update.supported:
+        links_result = await session.execute(
+            select(SentenceFactLink).where(SentenceFactLink.sentence_id == sentence_id)
+        )
+        if not links_result.scalars().first():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Supported sentences require at least one fact link",
+            )
+
+    sentence.supported = update.supported
+    sentence.verifier_failure_modes = update.verifier_failure_modes
+    sentence.verifier_explanation = update.verifier_explanation
+    session.add(sentence)
+    await session.commit()
+    await session.refresh(sentence)
+    return sentence

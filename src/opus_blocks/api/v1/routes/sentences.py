@@ -5,11 +5,13 @@ from fastapi import APIRouter, status
 from opus_blocks.api.deps import CurrentUser, DbSession
 from opus_blocks.schemas.sentence import SentenceCreate, SentenceRead
 from opus_blocks.schemas.sentence_fact_link import SentenceFactLinkCreate, SentenceFactLinkRead
+from opus_blocks.schemas.verification import SentenceVerificationUpdate
 from opus_blocks.services.sentences import (
     create_sentence,
     create_sentence_fact_link,
     list_paragraph_sentences,
     list_sentence_fact_links,
+    update_sentence_verification,
 )
 
 router = APIRouter(prefix="/sentences")
@@ -45,3 +47,16 @@ async def list_sentence_fact_links_endpoint(
 ) -> list[SentenceFactLinkRead]:
     links = await list_sentence_fact_links(session, owner_id=user.id, sentence_id=sentence_id)
     return [SentenceFactLinkRead.model_validate(link) for link in links]
+
+
+@router.post("/{sentence_id}/verify", response_model=SentenceRead)
+async def verify_sentence_endpoint(
+    sentence_id: UUID,
+    update: SentenceVerificationUpdate,
+    session: DbSession,
+    user: CurrentUser,
+) -> SentenceRead:
+    sentence = await update_sentence_verification(
+        session, owner_id=user.id, sentence_id=sentence_id, update=update
+    )
+    return SentenceRead.model_validate(sentence)

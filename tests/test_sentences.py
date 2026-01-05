@@ -136,3 +136,45 @@ async def test_sentence_and_fact_links(async_client: AsyncClient) -> None:
     links = links_response.json()
     assert len(links) == 1
     assert links[0]["fact_id"] == fact["id"]
+
+    verify_response = await async_client.post(
+        f"/api/v1/sentences/{sentence['id']}/verify",
+        json={
+            "supported": True,
+            "verifier_failure_modes": [],
+            "verifier_explanation": None,
+        },
+        headers=headers,
+    )
+    assert verify_response.status_code == 200
+    verified_sentence = verify_response.json()
+    assert verified_sentence["supported"] is True
+
+
+@pytest.mark.anyio
+async def test_verify_requires_fact_links(async_client: AsyncClient) -> None:
+    token = await _register_and_login(async_client)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    paragraph = await _create_paragraph(async_client, token)
+
+    sentence_response = await async_client.post(
+        "/api/v1/sentences",
+        json={
+            "paragraph_id": paragraph["id"],
+            "order": 1,
+            "sentence_type": "topic",
+            "text": "Unsupported sentence.",
+            "is_user_edited": False,
+        },
+        headers=headers,
+    )
+    assert sentence_response.status_code == 201
+    sentence = sentence_response.json()
+
+    verify_response = await async_client.post(
+        f"/api/v1/sentences/{sentence['id']}/verify",
+        json={"supported": True, "verifier_failure_modes": [], "verifier_explanation": None},
+        headers=headers,
+    )
+    assert verify_response.status_code == 400
