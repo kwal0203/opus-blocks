@@ -68,3 +68,21 @@ async def list_document_runs(session: AsyncSession, owner_id: UUID, document_id:
         .order_by(Run.created_at.asc())
     )
     return list(result.scalars().all())
+
+
+async def list_runs_filtered(
+    session: AsyncSession,
+    owner_id: UUID,
+    run_type: str | None = None,
+    paragraph_id: UUID | None = None,
+    document_id: UUID | None = None,
+) -> list[Run]:
+    query = select(Run).where(Run.owner_id == owner_id)
+    if run_type:
+        query = query.where(Run.run_type == run_type)
+    if paragraph_id:
+        query = query.where(Run.paragraph_id == paragraph_id)
+    if document_id:
+        query = query.where(Run.document_id == document_id)
+    result = await session.execute(query.order_by(Run.created_at.asc()))
+    return list(result.scalars().all())
