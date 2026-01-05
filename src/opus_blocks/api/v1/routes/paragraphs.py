@@ -3,10 +3,13 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, status
 
 from opus_blocks.api.deps import CurrentUser, DbSession
+from opus_blocks.core.config import settings
 from opus_blocks.schemas.job import JobRead
 from opus_blocks.schemas.paragraph import ParagraphCreate, ParagraphRead
+from opus_blocks.schemas.run import RunRead
 from opus_blocks.services.jobs import create_job
 from opus_blocks.services.paragraphs import create_paragraph, get_paragraph
+from opus_blocks.services.runs import create_run, list_paragraph_runs
 
 router = APIRouter(prefix="/paragraphs")
 
@@ -44,6 +47,22 @@ async def generate_paragraph(paragraph_id: UUID, session: DbSession, user: Curre
     session.add(paragraph)
     await session.commit()
 
+    run = await create_run(
+        session,
+        owner_id=user.id,
+        run_type="WRITER",
+        paragraph_id=paragraph.id,
+        document_id=None,
+        provider=settings.llm_provider,
+        model=settings.llm_model,
+        prompt_version=settings.llm_prompt_version,
+        inputs_json={"paragraph_id": str(paragraph.id), "spec": paragraph.spec_json},
+        outputs_json={},
+    )
+    paragraph.latest_run_id = run.id
+    session.add(paragraph)
+    await session.commit()
+
     job = await create_job(session, user.id, "GENERATE_PARAGRAPH", paragraph.id)
     return JobRead.model_validate(job)
 
@@ -58,5 +77,24 @@ async def verify_paragraph(paragraph_id: UUID, session: DbSession, user: Current
     session.add(paragraph)
     await session.commit()
 
+    await create_run(
+        session,
+        owner_id=user.id,
+        run_type="VERIFIER",
+        paragraph_id=paragraph.id,
+        document_id=None,
+        provider=settings.llm_provider,
+        model=settings.llm_model,
+        prompt_version=settings.llm_prompt_version,
+        inputs_json={"paragraph_id": str(paragraph.id)},
+        outputs_json={},
+    )
+
     job = await create_job(session, user.id, "VERIFY_PARAGRAPH", paragraph.id)
     return JobRead.model_validate(job)
+
+
+@router.get("/{paragraph_id}/runs", response_model=list[RunRead])
+async def list_runs(paragraph_id: UUID, session: DbSession, user: CurrentUser) -> list[RunRead]:
+    runs = await list_paragraph_runs(session, owner_id=user.id, paragraph_id=paragraph_id)
+    return [RunRead.model_validate(run) for run in runs]
