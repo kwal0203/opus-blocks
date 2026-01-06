@@ -56,7 +56,8 @@ async def run_generate_job(job_id: UUID, paragraph_id: UUID) -> None:
                 )
                 allowed_facts = list(facts_result.scalars().all())
                 retriever = get_retriever()
-                retrieved = retriever.retrieve(
+                retrieved = await retriever.retrieve(
+                    session=session,
                     owner_id=job.owner_id,
                     query=retrieval_query,
                     allowed_fact_ids=paragraph.allowed_fact_ids,

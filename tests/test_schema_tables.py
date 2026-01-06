@@ -8,6 +8,7 @@ def test_expected_tables_are_registered() -> None:
         "documents",
         "spans",
         "facts",
+        "fact_embeddings",
         "manuscripts",
         "manuscript_documents",
         "paragraphs",

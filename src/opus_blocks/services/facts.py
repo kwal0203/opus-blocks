@@ -1,3 +1,4 @@
+import uuid
 from uuid import UUID
 
 from fastapi import HTTPException, status
@@ -11,6 +12,7 @@ from opus_blocks.models.manuscript_document import ManuscriptDocument
 from opus_blocks.models.span import Span
 from opus_blocks.schemas.fact import ManualFactCreate
 from opus_blocks.schemas.span import FactSpanCreate
+from opus_blocks.services.embeddings import upsert_fact_embedding
 
 
 async def create_manual_fact(
@@ -39,6 +41,14 @@ async def create_manual_fact(
     session.add(fact)
     await session.commit()
     await session.refresh(fact)
+    if owner_id:
+        await upsert_fact_embedding(
+            session,
+            fact.id,
+            vector_id=str(uuid.uuid4()),
+            embedding_model="stub-embedding-v1",
+            namespace=f"user:{owner_id}",
+        )
     return fact
 
 
@@ -157,4 +167,11 @@ async def create_fact_with_span(
     await session.refresh(fact)
     if span:
         await session.refresh(span)
+    await upsert_fact_embedding(
+        session,
+        fact.id,
+        vector_id=str(uuid.uuid4()),
+        embedding_model="stub-embedding-v1",
+        namespace=f"user:{owner_id}",
+    )
     return fact
