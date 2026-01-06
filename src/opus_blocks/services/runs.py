@@ -27,6 +27,10 @@ async def create_run(
     prompt_version: str,
     inputs_json: dict,
     outputs_json: dict,
+    token_prompt: int | None = None,
+    token_completion: int | None = None,
+    cost_usd: float | None = None,
+    latency_ms: int | None = None,
     trace_id: str | None = None,
 ) -> Run:
     run = Run(
@@ -40,6 +44,10 @@ async def create_run(
         input_hash=_hash_inputs(inputs_json),
         inputs_json=inputs_json,
         outputs_json=outputs_json,
+        token_prompt=token_prompt,
+        token_completion=token_completion,
+        cost_usd=cost_usd,
+        latency_ms=latency_ms,
         trace_id=trace_id or str(uuid.uuid4()),
     )
     session.add(run)

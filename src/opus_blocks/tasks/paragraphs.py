@@ -10,6 +10,7 @@ from opus_blocks.contracts.agent_contracts import (
     validate_writer_output,
 )
 from opus_blocks.core.config import settings
+from opus_blocks.llm.provider import get_llm_provider
 from opus_blocks.models.fact import Fact
 from opus_blocks.models.job import Job
 from opus_blocks.models.paragraph import Paragraph
@@ -52,31 +53,15 @@ async def run_generate_job(job_id: UUID, paragraph_id: UUID) -> None:
                     .limit(1)
                 )
 
-            writer_payload = {
-                "paragraph": {
-                    "section": paragraph.section,
-                    "intent": paragraph.intent,
-                    "sentences": [],
-                    "missing_evidence": [],
-                }
-            }
-            if linked_fact:
-                writer_payload["paragraph"]["sentences"] = [
-                    {
-                        "order": 1,
-                        "sentence_type": "topic",
-                        "text": "Placeholder generated sentence.",
-                        "citations": [linked_fact.id],
-                    }
-                ]
-            else:
-                writer_payload["paragraph"]["missing_evidence"] = [
-                    {
-                        "needed_for": "placeholder sentence",
-                        "why_missing": "no allowed facts provided",
-                        "suggested_fact_type": "source fact",
-                    }
-                ]
+            provider = get_llm_provider()
+            writer_result = provider.generate_paragraph(
+                paragraph_id=paragraph.id,
+                section=paragraph.section,
+                intent=paragraph.intent,
+                allowed_fact_ids=paragraph.allowed_fact_ids,
+                linked_fact_id=linked_fact.id if linked_fact else None,
+            )
+            writer_payload = writer_result.outputs
 
             try:
                 validate_writer_output(
@@ -91,23 +76,23 @@ async def run_generate_job(job_id: UUID, paragraph_id: UUID) -> None:
                 await engine.dispose()
                 return
 
-            if writer_payload["paragraph"]["sentences"]:
+            for sentence_payload in writer_payload["paragraph"].get("sentences", []):
                 sentence = Sentence(
                     paragraph_id=paragraph.id,
-                    order=1,
-                    sentence_type="topic",
-                    text="Placeholder generated sentence.",
+                    order=sentence_payload["order"],
+                    sentence_type=sentence_payload["sentence_type"],
+                    text=sentence_payload["text"],
                     is_user_edited=False,
                     supported=False,
                 )
                 session.add(sentence)
                 await session.flush()
 
-                if linked_fact:
+                for citation in sentence_payload.get("citations", []):
                     session.add(
                         SentenceFactLink(
                             sentence_id=sentence.id,
-                            fact_id=linked_fact.id,
+                            fact_id=UUID(str(citation)),
                             score=0.5,
                         )
                     )
@@ -138,29 +123,18 @@ async def run_verify_job(job_id: UUID, paragraph_id: UUID) -> None:
             select(Sentence).where(Sentence.paragraph_id == paragraph.id)
         )
         sentences = list(sentences_result.scalars().all())
-        results = []
+        sentence_inputs: list[dict] = []
         for sentence in sentences:
             has_links = await session.scalar(
                 select(SentenceFactLink).where(SentenceFactLink.sentence_id == sentence.id).limit(1)
             )
-            verdict = "PASS" if has_links else "FAIL"
-            failure_modes = [] if verdict == "PASS" else ["UNCITED_CLAIM"]
-            results.append(
-                {
-                    "order": sentence.order,
-                    "verdict": verdict,
-                    "failure_modes": failure_modes,
-                    "explanation": "Placeholder verification.",
-                    "required_fix": "Add citations." if verdict == "FAIL" else "None",
-                    "suggested_rewrite": None,
-                }
-            )
+            sentence_inputs.append({"order": sentence.order, "has_links": bool(has_links)})
 
-        verifier_payload = {
-            "overall_pass": all(result["verdict"] == "PASS" for result in results),
-            "sentence_results": results,
-            "missing_evidence_summary": [],
-        }
+        provider = get_llm_provider()
+        verifier_result = provider.verify_paragraph(
+            paragraph_id=paragraph.id, sentence_inputs=sentence_inputs
+        )
+        verifier_payload = verifier_result.outputs
         try:
             validate_verifier_output(verifier_payload, sentence_orders=[s.order for s in sentences])
         except ValueError:
@@ -173,10 +147,14 @@ async def run_verify_job(job_id: UUID, paragraph_id: UUID) -> None:
             return
 
         for sentence in sentences:
-            verdict = next(
-                result["verdict"] for result in results if result["order"] == sentence.order
+            result = next(
+                item
+                for item in verifier_payload["sentence_results"]
+                if item["order"] == sentence.order
             )
-            sentence.supported = verdict == "PASS"
+            sentence.supported = result["verdict"] == "PASS"
+            sentence.verifier_failure_modes = result.get("failure_modes", [])
+            sentence.verifier_explanation = result.get("explanation")
             session.add(sentence)
 
         paragraph.status = "VERIFIED" if verifier_payload["overall_pass"] else "NEEDS_REVISION"
