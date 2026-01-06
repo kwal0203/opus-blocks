@@ -16,7 +16,7 @@ from opus_blocks.services.facts import (
     list_document_facts,
     list_document_facts_with_spans,
 )
-from opus_blocks.services.jobs import create_job
+from opus_blocks.services.jobs import create_job, enqueue_job
 from opus_blocks.services.runs import list_document_runs
 
 router = APIRouter(prefix="/documents")
@@ -66,6 +66,7 @@ async def extract_facts(
     await session.commit()
 
     job = await create_job(session, current_user.id, "EXTRACT_FACTS", document.id)
+    enqueue_job("extract_facts", job.id, document.id)
     return JobRead.model_validate(job)
 
 

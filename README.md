@@ -7,6 +7,7 @@ Local setup
 Notes
 - by default the pipeline uses stubbed outputs; the OpenAI path is gated by `LLM_USE_OPENAI`
 - golden set runner: `uv run python scripts/run_golden_set.py docs/golden-dataset-v0.json --results-out docs/golden-results-v0.json`
+- job dispatch is disabled by default; set `JOBS_ENQUEUE_ENABLED=true` and run a Celery worker to execute extract/generate/verify
 
 Vector store
 - default backend is stub (Postgres-only); set `VECTOR_BACKEND=chroma` for local Chroma persistence
