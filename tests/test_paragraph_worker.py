@@ -302,3 +302,84 @@ async def test_generate_creates_sentence_links(async_client: AsyncClient, tmp_pa
         assert links[0]["fact_id"] == fact["id"]
     finally:
         settings.storage_root = original_root
+
+
+@pytest.mark.anyio
+async def test_generate_uses_writer_output(
+    async_client: AsyncClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    original_root = settings.storage_root
+    settings.storage_root = str(tmp_path)
+    try:
+        token = await _register_and_login(async_client)
+        headers = {"Authorization": f"Bearer {token}"}
+        fact = await _create_fact(async_client, token)
+        paragraph = await _create_paragraph(async_client, token, [fact["id"]])
+
+        class FakeProvider:
+            def generate_paragraph(self, *, inputs: dict):  # type: ignore[no-untyped-def]
+                return type(
+                    "Result",
+                    (),
+                    {
+                        "outputs": {
+                            "paragraph": {
+                                "section": paragraph["section"],
+                                "intent": paragraph["intent"],
+                                "sentences": [
+                                    {
+                                        "order": 1,
+                                        "sentence_type": "topic",
+                                        "text": "Generated from provider.",
+                                        "citations": [fact["id"]],
+                                    }
+                                ],
+                                "missing_evidence": [],
+                            }
+                        },
+                        "metadata": type(
+                            "Meta",
+                            (),
+                            {
+                                "provider": "test",
+                                "model": "test",
+                                "prompt_version": "v1",
+                                "token_prompt": None,
+                                "token_completion": None,
+                                "cost_usd": None,
+                                "latency_ms": None,
+                            },
+                        )(),
+                    },
+                )()
+
+        monkeypatch.setattr("opus_blocks.tasks.paragraphs.get_llm_provider", lambda: FakeProvider())
+
+        generate_response = await async_client.post(
+            f"/api/v1/paragraphs/{paragraph['id']}/generate", headers=headers
+        )
+        assert generate_response.status_code == 200
+        generate_job = generate_response.json()
+
+        original_url = settings.database_url
+        settings.database_url = os.environ["OPUS_BLOCKS_TEST_DATABASE_URL"]
+        try:
+            await run_generate_job(uuid.UUID(generate_job["id"]), uuid.UUID(paragraph["id"]))
+        finally:
+            settings.database_url = original_url
+
+        sentences_response = await async_client.get(
+            f"/api/v1/sentences/paragraph/{paragraph['id']}", headers=headers
+        )
+        assert sentences_response.status_code == 200
+        sentence = sentences_response.json()[0]
+        assert sentence["text"] == "Generated from provider."
+
+        links_response = await async_client.get(
+            f"/api/v1/sentences/{sentence['id']}/links", headers=headers
+        )
+        assert links_response.status_code == 200
+        links = links_response.json()
+        assert links[0]["fact_id"] == fact["id"]
+    finally:
+        settings.storage_root = original_root
