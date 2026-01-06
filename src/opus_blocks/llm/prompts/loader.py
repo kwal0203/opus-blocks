@@ -10,4 +10,4 @@ class PromptLoader:
         template_path = self._root / f"{name}.md"
         template = template_path.read_text()
         payload = json.dumps(inputs, ensure_ascii=True)
-        return template.format(input_json=payload)
+        return template.replace("{input_json}", payload)

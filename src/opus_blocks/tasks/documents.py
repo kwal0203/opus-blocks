@@ -72,15 +72,40 @@ async def run_extract_facts_job(job_id: UUID, document_id: UUID) -> None:
         except Exception:
             try:
                 llm_result = provider.extract_facts(inputs=provider_inputs)
-            except Exception:
+            except Exception as retry_exc:
                 job.status = "FAILED"
                 document.status = "FAILED_EXTRACTION"
+                job.error = f"LLM extract failed: {retry_exc}"
                 session.add(job)
                 session.add(document)
                 await session.commit()
                 await engine.dispose()
                 return
         output_payload = llm_result.outputs
+
+        existing_facts = await session.scalar(
+            select(Fact.id).where(Fact.document_id == document.id).limit(1)
+        )
+        if not existing_facts and job.owner_id:
+            try:
+                validate_librarian_output(output_payload)
+            except ValueError:
+                try:
+                    llm_result = provider.extract_facts(inputs=provider_inputs)
+                    output_payload = llm_result.outputs
+                    validate_librarian_output(output_payload)
+                except ValueError as exc:
+                    job.status = "FAILED"
+                    document.status = "FAILED_EXTRACTION"
+                    job.error = f"Librarian contract validation failed: {exc}"
+                    job.progress = {
+                        "invalid_outputs": output_payload,
+                    }
+                    session.add(job)
+                    session.add(document)
+                    await session.commit()
+                    await engine.dispose()
+                    return
 
         if job.owner_id:
             await create_run(
@@ -99,26 +124,6 @@ async def run_extract_facts_job(job_id: UUID, document_id: UUID) -> None:
                 cost_usd=llm_result.metadata.cost_usd,
                 latency_ms=llm_result.metadata.latency_ms,
             )
-
-        existing_facts = await session.scalar(
-            select(Fact.id).where(Fact.document_id == document.id).limit(1)
-        )
-        if not existing_facts and job.owner_id:
-            try:
-                validate_librarian_output(output_payload)
-            except ValueError:
-                try:
-                    llm_result = provider.extract_facts(inputs=provider_inputs)
-                    output_payload = llm_result.outputs
-                    validate_librarian_output(output_payload)
-                except ValueError:
-                    job.status = "FAILED"
-                    document.status = "FAILED_EXTRACTION"
-                    session.add(job)
-                    session.add(document)
-                    await session.commit()
-                    await engine.dispose()
-                    return
 
             for fact_payload in output_payload.get("facts", []):
                 span_data = fact_payload.get("source_span") or {}

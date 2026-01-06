@@ -179,4 +179,9 @@ async def test_extract_facts_persists_uncertain(
     uncertain = next(fact for fact in facts if fact["is_uncertain"])
     assert uncertain["qualifiers"]["reason"] == "missing qualifier"
 
+    runs_response = await async_client.get(f"/api/v1/documents/{doc['id']}/runs", headers=headers)
+    assert runs_response.status_code == 200
+    runs = runs_response.json()
+    assert runs[0]["outputs_json"]["facts"][0]["content"] == "Real extracted fact."
+
     settings.storage_root = original_root

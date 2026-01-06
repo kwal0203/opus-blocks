@@ -87,9 +87,10 @@ async def run_generate_job(job_id: UUID, paragraph_id: UUID) -> None:
             except Exception:
                 try:
                     writer_result = provider.generate_paragraph(inputs=writer_inputs)
-                except Exception:
+                except Exception as exc:
                     paragraph.status = "FAILED_GENERATION"
                     job.status = "FAILED"
+                    job.error = f"LLM generate failed: {exc}"
                     session.add(paragraph)
                     session.add(job)
                     await session.commit()
@@ -108,9 +109,13 @@ async def run_generate_job(job_id: UUID, paragraph_id: UUID) -> None:
                     validate_writer_output(
                         writer_payload, allowed_fact_ids=set(paragraph.allowed_fact_ids)
                     )
-                except ValueError:
+                except ValueError as exc:
                     paragraph.status = "FAILED_GENERATION"
                     job.status = "FAILED"
+                    job.error = f"Writer contract validation failed: {exc}"
+                    job.progress = {
+                        "invalid_outputs": writer_payload,
+                    }
                     session.add(paragraph)
                     session.add(job)
                     await session.commit()
@@ -219,9 +224,10 @@ async def run_verify_job(job_id: UUID, paragraph_id: UUID) -> None:
         except Exception:
             try:
                 verifier_result = provider.verify_paragraph(inputs=verifier_inputs)
-            except Exception:
+            except Exception as exc:
                 job.status = "FAILED"
                 paragraph.status = "NEEDS_REVISION"
+                job.error = f"LLM verify failed: {exc}"
                 session.add(paragraph)
                 session.add(job)
                 await session.commit()
@@ -237,9 +243,13 @@ async def run_verify_job(job_id: UUID, paragraph_id: UUID) -> None:
                 validate_verifier_output(
                     verifier_payload, sentence_orders=[s.order for s in sentences]
                 )
-            except ValueError:
+            except ValueError as exc:
                 job.status = "FAILED"
                 paragraph.status = "NEEDS_REVISION"
+                job.error = f"Verifier contract validation failed: {exc}"
+                job.progress = {
+                    "invalid_outputs": verifier_payload,
+                }
                 session.add(paragraph)
                 session.add(job)
                 await session.commit()
