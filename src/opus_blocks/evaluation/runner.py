@@ -166,3 +166,18 @@ def evaluate_regression_gate(
 def write_baseline(path: Path, metrics: EvaluationMetrics) -> None:
     payload = {"baseline_metrics": metrics.to_dict()}
     path.write_text(json.dumps(payload, indent=2, sort_keys=True))
+
+
+def write_evaluation_artifact(
+    path: Path,
+    dataset: GoldenDataset,
+    result: EvaluationResult,
+    gate: RegressionGateResult,
+) -> None:
+    payload = {
+        "version": dataset.version,
+        "metrics": result.metrics.to_dict(),
+        "gate_passed": gate.passed,
+        "diffs": gate.diffs,
+    }
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True))

@@ -9,6 +9,7 @@ from opus_blocks.evaluation.runner import (
     load_golden_dataset,
     run_golden_set,
     write_baseline,
+    write_evaluation_artifact,
 )
 
 
@@ -32,6 +33,11 @@ def main() -> int:
         default=0.0,
         help="Maximum acceptable false support rate.",
     )
+    parser.add_argument(
+        "--results-out",
+        type=Path,
+        help="Optional path to write evaluation artifact JSON.",
+    )
     args = parser.parse_args()
 
     dataset = load_golden_dataset(args.dataset)
@@ -54,6 +60,8 @@ def main() -> int:
 
     if args.baseline_out:
         write_baseline(args.baseline_out, result.metrics)
+    if args.results_out:
+        write_evaluation_artifact(args.results_out, dataset, result, gate)
 
     return 0 if gate.passed else 1
 
