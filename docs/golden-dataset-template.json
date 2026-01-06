@@ -1,0 +1,22 @@
+{
+  "version": "v0",
+  "baseline_metrics": {
+    "sentence_support_rate": 0.0,
+    "false_support_rate": 0.0,
+    "verified_paragraph_rate": 0.0,
+    "correct_refusal_rate": 0.0,
+    "over_refusal_rate": 0.0
+  },
+  "paragraphs": [
+    {
+      "paragraph_id": "PARAGRAPH_UUID",
+      "expected_verified": false,
+      "sentences": [
+        {
+          "order": 1,
+          "expected_supported": false
+        }
+      ]
+    }
+  ]
+}
