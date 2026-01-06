@@ -1,5 +1,6 @@
 from opus_blocks.models.document import Document
 from opus_blocks.models.fact import Fact
+from opus_blocks.models.fact_embedding import FactEmbedding
 from opus_blocks.models.job import Job
 from opus_blocks.models.manuscript import Manuscript
 from opus_blocks.models.manuscript_document import ManuscriptDocument
@@ -13,6 +14,7 @@ from opus_blocks.models.user import User
 __all__ = [
     "Document",
     "Fact",
+    "FactEmbedding",
     "Job",
     "Manuscript",
     "ManuscriptDocument",
