@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from openai import OpenAI
 
 from opus_blocks.core.config import settings
+from opus_blocks.llm.prompts import loader
 
 
 @dataclass(frozen=True)
@@ -142,6 +143,7 @@ class OpenAIProvider:
         self._client = OpenAI(api_key=api_key)
         self._model = model
         self._prompt_version = prompt_version
+        self._prompt_loader = loader.PromptLoader()
 
     def _metadata(self, start_time: float, usage: object | None) -> LLMMetadata:
         latency_ms = int((time.perf_counter() - start_time) * 1000)
@@ -176,35 +178,18 @@ class OpenAIProvider:
         return LLMResult(outputs=outputs, metadata=metadata)
 
     def extract_facts(self, *, inputs: dict) -> LLMResult:
-        system_prompt = (
-            "You are a scientific librarian. Return JSON only that matches the "
-            "LibrarianOutput schema."
-        )
-        user_prompt = (
-            "Extract atomic facts from the provided input. "
-            "If no facts can be extracted, return empty lists. "
-            f"Input JSON: {json.dumps(inputs, ensure_ascii=True)}"
-        )
+        system_prompt = self._prompt_loader.render("librarian", inputs)
+        user_prompt = "Return JSON only."
         return self._request(system_prompt=system_prompt, user_prompt=user_prompt)
 
     def generate_paragraph(self, *, inputs: dict) -> LLMResult:
-        system_prompt = (
-            "You are a scientific writer. Return JSON only that matches the WriterOutput schema."
-        )
-        user_prompt = (
-            "Write a paragraph that adheres to the spec and citations. "
-            f"Input JSON: {json.dumps(inputs, ensure_ascii=True)}"
-        )
+        system_prompt = self._prompt_loader.render("writer", inputs)
+        user_prompt = "Return JSON only."
         return self._request(system_prompt=system_prompt, user_prompt=user_prompt)
 
     def verify_paragraph(self, *, inputs: dict) -> LLMResult:
-        system_prompt = (
-            "You are a strict verifier. Return JSON only that matches the VerifierOutput schema."
-        )
-        user_prompt = (
-            "Verify the paragraph sentences against the provided facts. "
-            f"Input JSON: {json.dumps(inputs, ensure_ascii=True)}"
-        )
+        system_prompt = self._prompt_loader.render("verifier", inputs)
+        user_prompt = "Return JSON only."
         return self._request(system_prompt=system_prompt, user_prompt=user_prompt)
 
 
