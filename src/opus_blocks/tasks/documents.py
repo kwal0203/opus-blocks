@@ -14,7 +14,7 @@ from opus_blocks.models.document import Document
 from opus_blocks.models.fact import Fact
 from opus_blocks.models.job import Job
 from opus_blocks.models.span import Span
-from opus_blocks.services.embeddings import upsert_fact_embedding
+from opus_blocks.services.embeddings import embed_text, upsert_fact_embedding
 from opus_blocks.services.runs import create_run
 from opus_blocks.tasks.celery_app import celery_app
 
@@ -153,6 +153,7 @@ async def run_extract_facts_job(job_id: UUID, document_id: UUID) -> None:
                     vector_id=str(uuid.uuid4()),
                     embedding_model="stub-embedding-v1",
                     namespace=f"user:{job.owner_id}",
+                    embedding=embed_text(fact.content),
                     commit=False,
                 )
 
@@ -190,6 +191,7 @@ async def run_extract_facts_job(job_id: UUID, document_id: UUID) -> None:
                     vector_id=str(uuid.uuid4()),
                     embedding_model="stub-embedding-v1",
                     namespace=f"user:{job.owner_id}",
+                    embedding=embed_text(fact.content),
                     commit=False,
                 )
 
