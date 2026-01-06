@@ -4,6 +4,7 @@ from opus_blocks.db.base import Base
 
 def test_expected_tables_are_registered() -> None:
     expected = {
+        "dead_letters",
         "users",
         "documents",
         "spans",

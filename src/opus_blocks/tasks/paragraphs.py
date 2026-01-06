@@ -17,6 +17,7 @@ from opus_blocks.models.paragraph import Paragraph
 from opus_blocks.models.sentence import Sentence
 from opus_blocks.models.sentence_fact_link import SentenceFactLink
 from opus_blocks.retrieval import get_retriever
+from opus_blocks.services.dead_letters import create_dead_letter
 from opus_blocks.services.runs import get_latest_run_by_type, update_run_outputs
 from opus_blocks.tasks.celery_app import celery_app
 
@@ -25,6 +26,13 @@ def _build_session_factory() -> tuple[async_sessionmaker, AsyncEngine]:
     engine = create_async_engine(settings.database_url, pool_pre_ping=True)
     session_factory = async_sessionmaker(engine, expire_on_commit=False)
     return session_factory, engine
+
+
+def _bump_retry(job: Job, reason: str) -> None:
+    progress = dict(job.progress or {})
+    progress["retries"] = progress.get("retries", 0) + 1
+    progress["last_retry_reason"] = reason
+    job.progress = progress
 
 
 async def run_generate_job(job_id: UUID, paragraph_id: UUID) -> None:
@@ -84,16 +92,24 @@ async def run_generate_job(job_id: UUID, paragraph_id: UUID) -> None:
             provider = get_llm_provider()
             try:
                 writer_result = provider.generate_paragraph(inputs=writer_inputs)
-            except Exception:
+            except Exception as exc:
+                _bump_retry(job, f"generate_paragraph: {exc}")
                 try:
                     writer_result = provider.generate_paragraph(inputs=writer_inputs)
-                except Exception as exc:
+                except Exception as retry_exc:
                     paragraph.status = "FAILED_GENERATION"
                     job.status = "FAILED"
-                    job.error = f"LLM generate failed: {exc}"
+                    job.error = f"LLM generate failed: {retry_exc}"
                     session.add(paragraph)
                     session.add(job)
-                    await session.commit()
+                    await create_dead_letter(
+                        session,
+                        job_id=job.id,
+                        task_name="generate_paragraph",
+                        payload_json=writer_inputs,
+                        error=job.error,
+                        retry_count=job.progress.get("retries", 0),
+                    )
                     await engine.dispose()
                     return
             writer_payload = writer_result.outputs
@@ -102,23 +118,32 @@ async def run_generate_job(job_id: UUID, paragraph_id: UUID) -> None:
                 validate_writer_output(
                     writer_payload, allowed_fact_ids=set(paragraph.allowed_fact_ids)
                 )
-            except ValueError:
+            except ValueError as exc:
+                _bump_retry(job, f"writer_contract: {exc}")
                 try:
                     writer_result = provider.generate_paragraph(inputs=writer_inputs)
                     writer_payload = writer_result.outputs
                     validate_writer_output(
                         writer_payload, allowed_fact_ids=set(paragraph.allowed_fact_ids)
                     )
-                except ValueError as exc:
+                except ValueError as retry_exc:
                     paragraph.status = "FAILED_GENERATION"
                     job.status = "FAILED"
-                    job.error = f"Writer contract validation failed: {exc}"
+                    job.error = f"Writer contract validation failed: {retry_exc}"
                     job.progress = {
+                        **(job.progress or {}),
                         "invalid_outputs": writer_payload,
                     }
                     session.add(paragraph)
                     session.add(job)
-                    await session.commit()
+                    await create_dead_letter(
+                        session,
+                        job_id=job.id,
+                        task_name="generate_paragraph",
+                        payload_json=writer_inputs,
+                        error=job.error,
+                        retry_count=job.progress.get("retries", 0),
+                    )
                     await engine.dispose()
                     return
 
@@ -221,38 +246,55 @@ async def run_verify_job(job_id: UUID, paragraph_id: UUID) -> None:
         provider = get_llm_provider()
         try:
             verifier_result = provider.verify_paragraph(inputs=verifier_inputs)
-        except Exception:
+        except Exception as exc:
+            _bump_retry(job, f"verify_paragraph: {exc}")
             try:
                 verifier_result = provider.verify_paragraph(inputs=verifier_inputs)
-            except Exception as exc:
+            except Exception as retry_exc:
                 job.status = "FAILED"
                 paragraph.status = "NEEDS_REVISION"
-                job.error = f"LLM verify failed: {exc}"
+                job.error = f"LLM verify failed: {retry_exc}"
                 session.add(paragraph)
                 session.add(job)
-                await session.commit()
+                await create_dead_letter(
+                    session,
+                    job_id=job.id,
+                    task_name="verify_paragraph",
+                    payload_json=verifier_inputs,
+                    error=job.error,
+                    retry_count=job.progress.get("retries", 0),
+                )
                 await engine.dispose()
                 return
         verifier_payload = verifier_result.outputs
         try:
             validate_verifier_output(verifier_payload, sentence_orders=[s.order for s in sentences])
-        except ValueError:
+        except ValueError as exc:
+            _bump_retry(job, f"verifier_contract: {exc}")
             try:
                 verifier_result = provider.verify_paragraph(inputs=verifier_inputs)
                 verifier_payload = verifier_result.outputs
                 validate_verifier_output(
                     verifier_payload, sentence_orders=[s.order for s in sentences]
                 )
-            except ValueError as exc:
+            except ValueError as retry_exc:
                 job.status = "FAILED"
                 paragraph.status = "NEEDS_REVISION"
-                job.error = f"Verifier contract validation failed: {exc}"
+                job.error = f"Verifier contract validation failed: {retry_exc}"
                 job.progress = {
+                    **(job.progress or {}),
                     "invalid_outputs": verifier_payload,
                 }
                 session.add(paragraph)
                 session.add(job)
-                await session.commit()
+                await create_dead_letter(
+                    session,
+                    job_id=job.id,
+                    task_name="verify_paragraph",
+                    payload_json=verifier_inputs,
+                    error=job.error,
+                    retry_count=job.progress.get("retries", 0),
+                )
                 await engine.dispose()
                 return
 

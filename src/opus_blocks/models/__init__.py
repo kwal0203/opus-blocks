@@ -1,3 +1,4 @@
+from opus_blocks.models.dead_letter import DeadLetter
 from opus_blocks.models.document import Document
 from opus_blocks.models.fact import Fact
 from opus_blocks.models.fact_embedding import FactEmbedding
@@ -13,6 +14,7 @@ from opus_blocks.models.user import User
 
 __all__ = [
     "Document",
+    "DeadLetter",
     "Fact",
     "FactEmbedding",
     "Job",

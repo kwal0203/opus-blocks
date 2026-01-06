@@ -3,6 +3,8 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, UploadFile, status
 
 from opus_blocks.api.deps import CurrentUser, DbSession
+from opus_blocks.core.config import settings
+from opus_blocks.core.rate_limit import rate_limit
 from opus_blocks.schemas.document import DocumentRead
 from opus_blocks.schemas.fact import FactRead, FactWithSpanRead
 from opus_blocks.schemas.job import JobRead
@@ -21,6 +23,7 @@ router = APIRouter(prefix="/documents")
 
 
 @router.post("/upload", response_model=DocumentRead, status_code=status.HTTP_201_CREATED)
+@rate_limit(settings.rate_limit_upload)
 async def upload_document(
     file: UploadFile,
     session: DbSession,
@@ -48,6 +51,7 @@ async def get_document_endpoint(
 
 
 @router.post("/{document_id}/extract_facts", response_model=JobRead)
+@rate_limit(settings.rate_limit_job)
 async def extract_facts(
     document_id: UUID,
     session: DbSession,
