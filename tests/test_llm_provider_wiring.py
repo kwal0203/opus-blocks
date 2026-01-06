@@ -28,15 +28,16 @@ async def _register_and_login(async_client: AsyncClient) -> str:
     return login_response.json()["access_token"]
 
 
-async def _create_document(async_client: AsyncClient, token: str) -> dict:
+async def _create_document(async_client: AsyncClient, token: str) -> tuple[dict, bytes]:
     headers = {"Authorization": f"Bearer {token}"}
+    file_bytes = b"%PDF-1.4 test"
     upload_response = await async_client.post(
         "/api/v1/documents/upload",
-        files={"file": ("example.pdf", b"%PDF-1.4 test", "application/pdf")},
+        files={"file": ("example.pdf", file_bytes, "application/pdf")},
         headers=headers,
     )
     assert upload_response.status_code == 201
-    return upload_response.json()
+    return upload_response.json(), file_bytes
 
 
 def _hash_inputs(payload: dict) -> str:
@@ -51,7 +52,8 @@ class FakeExtractProvider:
             provider="test-provider", model="test-model", prompt_version="test-v1"
         )
 
-    def extract_facts(self, *, document_id: uuid.UUID) -> LLMResult:
+    def extract_facts(self, *, inputs: dict) -> LLMResult:
+        document_id = inputs["document_id"]
         self.calls.append(f"extract:{document_id}")
         outputs = {
             "facts": [
@@ -81,20 +83,16 @@ class FakeParagraphProvider:
             provider="test-provider", model="test-model", prompt_version="test-v1"
         )
 
-    def generate_paragraph(
-        self,
-        *,
-        paragraph_id: uuid.UUID,
-        section: str,
-        intent: str,
-        allowed_fact_ids: list[uuid.UUID],
-        linked_fact_id: uuid.UUID | None,
-    ) -> LLMResult:
+    def generate_paragraph(self, *, inputs: dict) -> LLMResult:
+        paragraph_id = inputs["paragraph_id"]
+        paragraph_spec = inputs["paragraph_spec"]
+        allowed_facts = inputs["allowed_facts"]
+        linked_fact_id = allowed_facts[0]["fact_id"] if allowed_facts else None
         self.calls.append(f"generate:{paragraph_id}")
         outputs = {
             "paragraph": {
-                "section": section,
-                "intent": intent,
+                "section": paragraph_spec["section"],
+                "intent": paragraph_spec["intent"],
                 "sentences": [
                     {
                         "order": 1,
@@ -108,12 +106,9 @@ class FakeParagraphProvider:
         }
         return LLMResult(outputs=outputs, metadata=self.metadata)
 
-    def verify_paragraph(
-        self,
-        *,
-        paragraph_id: uuid.UUID,
-        sentence_inputs: list[dict],
-    ) -> LLMResult:
+    def verify_paragraph(self, *, inputs: dict) -> LLMResult:
+        paragraph_id = inputs["paragraph_id"]
+        sentence_inputs = inputs["sentences"]
         self.calls.append(f"verify:{paragraph_id}")
         outputs = {
             "overall_pass": True,
@@ -139,7 +134,7 @@ async def test_llm_provider_runs_metadata_and_hash(
 ) -> None:
     token = await _register_and_login(async_client)
     headers = {"Authorization": f"Bearer {token}"}
-    document = await _create_document(async_client, token)
+    document, file_bytes = await _create_document(async_client, token)
 
     extract_response = await async_client.post(
         f"/api/v1/documents/{document['id']}/extract_facts", headers=headers
@@ -168,7 +163,16 @@ async def test_llm_provider_runs_metadata_and_hash(
     assert librarian_run["provider"] == fake_provider.metadata.provider
     assert librarian_run["model"] == fake_provider.metadata.model
     assert librarian_run["prompt_version"] == fake_provider.metadata.prompt_version
-    expected_hash = _hash_inputs({"document_id": document["id"]})
+    source_text = file_bytes.decode("utf-8")
+    source_text_hash = hashlib.sha256(file_bytes).hexdigest()
+    expected_hash = _hash_inputs(
+        {
+            "document_id": document["id"],
+            "source_type": "PDF",
+            "source_text_hash": source_text_hash,
+            "source_text_len": len(source_text),
+        }
+    )
     assert librarian_run["input_hash"] == expected_hash
 
 
