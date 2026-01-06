@@ -52,20 +52,20 @@ async def run_generate_job(job_id: UUID, paragraph_id: UUID) -> None:
                 )
                 allowed_facts = list(facts_result.scalars().all())
 
+            writer_inputs = {
+                "paragraph_id": str(paragraph.id),
+                "paragraph_spec": paragraph.spec_json,
+                "allowed_facts": [
+                    {
+                        "fact_id": str(fact.id),
+                        "content": fact.content,
+                        "qualifiers": fact.qualifiers,
+                    }
+                    for fact in allowed_facts
+                ],
+            }
             provider = get_llm_provider()
             try:
-                writer_inputs = {
-                    "paragraph_id": str(paragraph.id),
-                    "paragraph_spec": paragraph.spec_json,
-                    "allowed_facts": [
-                        {
-                            "fact_id": str(fact.id),
-                            "content": fact.content,
-                            "qualifiers": fact.qualifiers,
-                        }
-                        for fact in allowed_facts
-                    ],
-                }
                 writer_result = provider.generate_paragraph(inputs=writer_inputs)
             except Exception:
                 try:
@@ -180,12 +180,12 @@ async def run_verify_job(job_id: UUID, paragraph_id: UUID) -> None:
                 }
             )
 
+        verifier_inputs = {
+            "paragraph_id": str(paragraph.id),
+            "sentences": sentence_inputs,
+        }
         provider = get_llm_provider()
         try:
-            verifier_inputs = {
-                "paragraph_id": str(paragraph.id),
-                "sentences": sentence_inputs,
-            }
             verifier_result = provider.verify_paragraph(inputs=verifier_inputs)
         except Exception:
             try:
