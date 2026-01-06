@@ -36,7 +36,17 @@ class Result:
     def __init__(self, outputs: dict) -> None:
         self.outputs = outputs
         self.metadata = type(
-            "Meta", (), {"provider": "test", "model": "test", "prompt_version": "v1"}
+            "Meta",
+            (),
+            {
+                "provider": "test",
+                "model": "test",
+                "prompt_version": "v1",
+                "token_prompt": None,
+                "token_completion": None,
+                "cost_usd": None,
+                "latency_ms": None,
+            },
         )()
 
 
