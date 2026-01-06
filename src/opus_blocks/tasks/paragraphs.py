@@ -16,6 +16,7 @@ from opus_blocks.models.job import Job
 from opus_blocks.models.paragraph import Paragraph
 from opus_blocks.models.sentence import Sentence
 from opus_blocks.models.sentence_fact_link import SentenceFactLink
+from opus_blocks.retrieval import get_retriever
 from opus_blocks.services.runs import get_latest_run_by_type, update_run_outputs
 from opus_blocks.tasks.celery_app import celery_app
 
@@ -44,6 +45,8 @@ async def run_generate_job(job_id: UUID, paragraph_id: UUID) -> None:
         )
         if not existing_sentence:
             allowed_facts: list[Fact] = []
+            retrieved_facts: list[dict] = []
+            retrieval_query = f"{paragraph.section} - {paragraph.intent}"
             if paragraph.allowed_fact_ids and job.owner_id:
                 facts_result = await session.execute(
                     select(Fact).where(
@@ -52,6 +55,16 @@ async def run_generate_job(job_id: UUID, paragraph_id: UUID) -> None:
                     )
                 )
                 allowed_facts = list(facts_result.scalars().all())
+                retriever = get_retriever()
+                retrieved = retriever.retrieve(
+                    owner_id=job.owner_id,
+                    query=retrieval_query,
+                    allowed_fact_ids=paragraph.allowed_fact_ids,
+                    limit=5,
+                )
+                retrieved_facts = [
+                    {"fact_id": str(item.fact_id), "score": item.score} for item in retrieved
+                ]
 
             writer_inputs = {
                 "paragraph_id": str(paragraph.id),
@@ -64,6 +77,8 @@ async def run_generate_job(job_id: UUID, paragraph_id: UUID) -> None:
                     }
                     for fact in allowed_facts
                 ],
+                "retrieval_query": retrieval_query,
+                "retrieved_facts": retrieved_facts,
             }
             provider = get_llm_provider()
             try:
