@@ -1,10 +1,12 @@
+import os
 import uuid
 
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from opus_blocks.db.session import get_session
+from opus_blocks.core.config import settings
 from opus_blocks.models.fact_embedding import FactEmbedding
 
 
@@ -69,12 +71,17 @@ async def test_fact_embeddings_created(async_client: AsyncClient) -> None:
     )
     assert paragraph_response.status_code == 201
 
-    session_factory = async_client.app.dependency_overrides.get(get_session)
-    assert session_factory is not None
-    async for session in session_factory():
-        result = await session.execute(
-            select(FactEmbedding).where(FactEmbedding.fact_id == fact["id"])
-        )
-        embedding = result.scalar_one_or_none()
-        assert embedding is not None
-        break
+    original_url = settings.database_url
+    settings.database_url = os.environ["OPUS_BLOCKS_TEST_DATABASE_URL"]
+    try:
+        engine = create_async_engine(settings.database_url, pool_pre_ping=True)
+        session_factory = async_sessionmaker(engine, expire_on_commit=False)
+        async with session_factory() as session:
+            result = await session.execute(
+                select(FactEmbedding).where(FactEmbedding.fact_id == fact["id"])
+            )
+            embedding = result.scalar_one_or_none()
+            assert embedding is not None
+        await engine.dispose()
+    finally:
+        settings.database_url = original_url
