@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException, status
 
 from opus_blocks.api.deps import CurrentUser, DbSession
 from opus_blocks.core.config import settings
+from opus_blocks.core.rate_limit import rate_limit
 from opus_blocks.retrieval import get_retriever
 from opus_blocks.schemas.fact import FactRead
 from opus_blocks.schemas.job import JobRead
@@ -50,6 +51,7 @@ async def get_paragraph_endpoint(
 
 
 @router.post("/{paragraph_id}/generate", response_model=JobRead)
+@rate_limit(settings.rate_limit_job)
 async def generate_paragraph(paragraph_id: UUID, session: DbSession, user: CurrentUser) -> JobRead:
     paragraph = await get_paragraph(session, owner_id=user.id, paragraph_id=paragraph_id)
     if not paragraph:
@@ -80,6 +82,7 @@ async def generate_paragraph(paragraph_id: UUID, session: DbSession, user: Curre
 
 
 @router.post("/{paragraph_id}/verify", response_model=JobRead)
+@rate_limit(settings.rate_limit_job)
 async def verify_paragraph(paragraph_id: UUID, session: DbSession, user: CurrentUser) -> JobRead:
     paragraph = await get_paragraph(session, owner_id=user.id, paragraph_id=paragraph_id)
     if not paragraph:

@@ -3,8 +3,11 @@ import uuid
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from opus_blocks.core.config import settings
+from opus_blocks.models.dead_letter import DeadLetter
 from opus_blocks.tasks.documents import run_extract_facts_job
 from opus_blocks.tasks.paragraphs import run_generate_job, run_verify_job
 
@@ -278,6 +281,16 @@ async def test_extract_facts_retries_and_fails_on_non_json(
     settings.database_url = os.environ["OPUS_BLOCKS_TEST_DATABASE_URL"]
     try:
         await run_extract_facts_job(uuid.UUID(extract_job["id"]), uuid.UUID(document["id"]))
+        engine = create_async_engine(settings.database_url, pool_pre_ping=True)
+        session_factory = async_sessionmaker(engine, expire_on_commit=False)
+        async with session_factory() as session:
+            result = await session.execute(
+                select(DeadLetter).where(DeadLetter.job_id == uuid.UUID(extract_job["id"]))
+            )
+            dead_letter = result.scalar_one_or_none()
+            assert dead_letter is not None
+            assert dead_letter.retry_count == 1
+        await engine.dispose()
     finally:
         settings.database_url = original_url
 

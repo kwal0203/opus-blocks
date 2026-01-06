@@ -30,5 +30,11 @@ class Settings(BaseSettings):
     vector_collection: str = "opus_blocks_facts"
     vector_persist_path: str = "storage/vector"
 
+    rate_limit_enabled: bool = False
+    rate_limit_storage_uri: str = "redis://localhost:6379/3"
+    rate_limit_auth: str = "20/minute"
+    rate_limit_upload: str = "30/minute"
+    rate_limit_job: str = "30/minute"
+
 
 settings = Settings()

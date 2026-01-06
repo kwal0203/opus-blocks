@@ -11,3 +11,6 @@ Notes
 Vector store
 - default backend is stub (Postgres-only); set `VECTOR_BACKEND=chroma` for local Chroma persistence
 - backfill embeddings: `uv run python scripts/backfill_embeddings.py`
+
+Infra ops
+- rate limits are configurable via `RATE_LIMIT_*` env vars; disabled by default in `.env.example`
