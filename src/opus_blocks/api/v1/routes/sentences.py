@@ -3,14 +3,19 @@ from uuid import UUID
 from fastapi import APIRouter, status
 
 from opus_blocks.api.deps import CurrentUser, DbSession
-from opus_blocks.schemas.sentence import SentenceCreate, SentenceRead
+from opus_blocks.core.config import settings
+from opus_blocks.schemas.job import JobRead
+from opus_blocks.schemas.sentence import SentenceCreate, SentenceRead, SentenceUpdate
 from opus_blocks.schemas.sentence_fact_link import SentenceFactLinkCreate, SentenceFactLinkRead
 from opus_blocks.schemas.verification import SentenceVerificationUpdate
+from opus_blocks.services.jobs import create_job, enqueue_job
+from opus_blocks.services.runs import create_run
 from opus_blocks.services.sentences import (
     create_sentence,
     create_sentence_fact_link,
     list_paragraph_sentences,
     list_sentence_fact_links,
+    update_sentence_text,
     update_sentence_verification,
 )
 
@@ -60,3 +65,35 @@ async def verify_sentence_endpoint(
         session, owner_id=user.id, sentence_id=sentence_id, update=update
     )
     return SentenceRead.model_validate(sentence)
+
+
+@router.patch("/{sentence_id}", response_model=JobRead)
+async def update_sentence_endpoint(
+    sentence_id: UUID,
+    update: SentenceUpdate,
+    session: DbSession,
+    user: CurrentUser,
+) -> JobRead:
+    sentence = await update_sentence_text(
+        session, owner_id=user.id, sentence_id=sentence_id, text=update.text
+    )
+    job = await create_job(session, user.id, "VERIFY_PARAGRAPH", sentence.paragraph_id)
+    await create_run(
+        session,
+        owner_id=user.id,
+        run_type="VERIFIER",
+        paragraph_id=sentence.paragraph_id,
+        document_id=None,
+        provider=settings.llm_provider,
+        model=settings.llm_model,
+        prompt_version=settings.llm_prompt_version,
+        inputs_json={
+            "paragraph_id": str(sentence.paragraph_id),
+            "trigger": "manual_edit",
+            "sentence_id": str(sentence.id),
+        },
+        outputs_json={},
+        trace_id=job.trace_id,
+    )
+    enqueue_job("verify_paragraph", job.id, sentence.paragraph_id)
+    return JobRead.model_validate(job)

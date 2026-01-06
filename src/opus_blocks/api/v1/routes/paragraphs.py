@@ -61,6 +61,7 @@ async def generate_paragraph(paragraph_id: UUID, session: DbSession, user: Curre
     session.add(paragraph)
     await session.commit()
 
+    job = await create_job(session, user.id, "GENERATE_PARAGRAPH", paragraph.id)
     run = await create_run(
         session,
         owner_id=user.id,
@@ -72,12 +73,12 @@ async def generate_paragraph(paragraph_id: UUID, session: DbSession, user: Curre
         prompt_version=settings.llm_prompt_version,
         inputs_json={"paragraph_id": str(paragraph.id), "spec": paragraph.spec_json},
         outputs_json={},
+        trace_id=job.trace_id,
     )
     paragraph.latest_run_id = run.id
     session.add(paragraph)
     await session.commit()
 
-    job = await create_job(session, user.id, "GENERATE_PARAGRAPH", paragraph.id)
     enqueue_job("generate_paragraph", job.id, paragraph.id)
     return JobRead.model_validate(job)
 
@@ -93,6 +94,7 @@ async def verify_paragraph(paragraph_id: UUID, session: DbSession, user: Current
     session.add(paragraph)
     await session.commit()
 
+    job = await create_job(session, user.id, "VERIFY_PARAGRAPH", paragraph.id)
     await create_run(
         session,
         owner_id=user.id,
@@ -104,9 +106,9 @@ async def verify_paragraph(paragraph_id: UUID, session: DbSession, user: Current
         prompt_version=settings.llm_prompt_version,
         inputs_json={"paragraph_id": str(paragraph.id)},
         outputs_json={},
+        trace_id=job.trace_id,
     )
 
-    job = await create_job(session, user.id, "VERIFY_PARAGRAPH", paragraph.id)
     enqueue_job("verify_paragraph", job.id, paragraph.id)
     return JobRead.model_validate(job)
 
