@@ -129,3 +129,38 @@ async def test_manual_fact_and_listings(async_client: AsyncClient, tmp_path: Pat
         assert manuscript_span_fact["span"]["page"] == 1
     finally:
         settings.storage_root = original_root
+
+
+@pytest.mark.anyio
+async def test_delete_fact_removes_from_document(async_client: AsyncClient, tmp_path: Path) -> None:
+    original_root = settings.storage_root
+    settings.storage_root = str(tmp_path)
+    try:
+        token = await _register_and_login(async_client)
+        headers = {"Authorization": f"Bearer {token}"}
+        document = await _upload_document(async_client, token)
+
+        manual_fact_payload = {
+            "content": "Manual fact content.",
+            "document_id": document["id"],
+            "qualifiers": {"source": "note"},
+            "confidence": 0.9,
+            "is_uncertain": False,
+        }
+        fact_response = await async_client.post(
+            "/api/v1/facts/manual", json=manual_fact_payload, headers=headers
+        )
+        assert fact_response.status_code == 201
+        fact = fact_response.json()
+
+        delete_response = await async_client.delete(f"/api/v1/facts/{fact['id']}", headers=headers)
+        assert delete_response.status_code == 204
+
+        list_response = await async_client.get(
+            f"/api/v1/documents/{document['id']}/facts", headers=headers
+        )
+        assert list_response.status_code == 200
+        facts = list_response.json()
+        assert not facts
+    finally:
+        settings.storage_root = original_root

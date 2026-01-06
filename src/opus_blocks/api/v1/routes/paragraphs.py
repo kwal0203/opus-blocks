@@ -4,10 +4,12 @@ from fastapi import APIRouter, HTTPException, status
 
 from opus_blocks.api.deps import CurrentUser, DbSession
 from opus_blocks.core.config import settings
+from opus_blocks.retrieval import get_retriever
 from opus_blocks.schemas.fact import FactRead
 from opus_blocks.schemas.job import JobRead
 from opus_blocks.schemas.paragraph import ParagraphCreate, ParagraphRead
 from opus_blocks.schemas.paragraph_view import ParagraphView
+from opus_blocks.schemas.retrieval import FactSuggestion
 from opus_blocks.schemas.run import RunRead
 from opus_blocks.schemas.sentence import SentenceRead
 from opus_blocks.schemas.sentence_fact_link import SentenceFactLinkRead
@@ -146,3 +148,30 @@ async def get_paragraph_view(
         links=links,
         facts=[FactRead.model_validate(fact) for fact in facts],
     )
+
+
+@router.get("/{paragraph_id}/suggest-facts", response_model=list[FactSuggestion])
+async def suggest_facts(
+    paragraph_id: UUID, session: DbSession, user: CurrentUser
+) -> list[FactSuggestion]:
+    paragraph = await get_paragraph(session, owner_id=user.id, paragraph_id=paragraph_id)
+    if not paragraph:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Paragraph not found")
+
+    allowed_fact_ids = paragraph.allowed_fact_ids
+    if not allowed_fact_ids:
+        facts = await list_manuscript_facts(
+            session, owner_id=user.id, manuscript_id=paragraph.manuscript_id
+        )
+        allowed_fact_ids = [fact.id for fact in facts]
+
+    retrieval_query = f"{paragraph.section} - {paragraph.intent}"
+    retriever = get_retriever()
+    retrieved = await retriever.retrieve(
+        session=session,
+        owner_id=user.id,
+        query=retrieval_query,
+        allowed_fact_ids=allowed_fact_ids,
+        limit=5,
+    )
+    return [FactSuggestion(fact_id=item.fact_id, score=item.score) for item in retrieved]

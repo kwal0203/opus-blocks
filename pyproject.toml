@@ -16,6 +16,7 @@ dependencies = [
     "celery>=5.3.6",
     "redis>=5.0.4",
     "openai>=1.30.0",
+    "chromadb>=0.5.5",
     "email-validator>=2.1.1",
     "python-jose[cryptography]>=3.3.0",
     "bcrypt>=5.0.0",
