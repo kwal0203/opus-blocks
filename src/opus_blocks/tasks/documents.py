@@ -69,13 +69,16 @@ async def run_extract_facts_job(job_id: UUID, document_id: UUID) -> None:
         try:
             llm_result = provider.extract_facts(inputs=provider_inputs)
         except Exception:
-            job.status = "FAILED"
-            document.status = "FAILED_EXTRACTION"
-            session.add(job)
-            session.add(document)
-            await session.commit()
-            await engine.dispose()
-            return
+            try:
+                llm_result = provider.extract_facts(inputs=provider_inputs)
+            except Exception:
+                job.status = "FAILED"
+                document.status = "FAILED_EXTRACTION"
+                session.add(job)
+                session.add(document)
+                await session.commit()
+                await engine.dispose()
+                return
         output_payload = llm_result.outputs
 
         if job.owner_id:
@@ -103,13 +106,18 @@ async def run_extract_facts_job(job_id: UUID, document_id: UUID) -> None:
             try:
                 validate_librarian_output(output_payload)
             except ValueError:
-                job.status = "FAILED"
-                document.status = "FAILED_EXTRACTION"
-                session.add(job)
-                session.add(document)
-                await session.commit()
-                await engine.dispose()
-                return
+                try:
+                    llm_result = provider.extract_facts(inputs=provider_inputs)
+                    output_payload = llm_result.outputs
+                    validate_librarian_output(output_payload)
+                except ValueError:
+                    job.status = "FAILED"
+                    document.status = "FAILED_EXTRACTION"
+                    session.add(job)
+                    session.add(document)
+                    await session.commit()
+                    await engine.dispose()
+                    return
 
             for fact_payload in output_payload.get("facts", []):
                 span_data = fact_payload.get("source_span") or {}

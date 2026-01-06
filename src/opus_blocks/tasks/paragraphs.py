@@ -52,29 +52,32 @@ async def run_generate_job(job_id: UUID, paragraph_id: UUID) -> None:
                 )
                 allowed_facts = list(facts_result.scalars().all())
 
+            writer_inputs = {
+                "paragraph_id": str(paragraph.id),
+                "paragraph_spec": paragraph.spec_json,
+                "allowed_facts": [
+                    {
+                        "fact_id": str(fact.id),
+                        "content": fact.content,
+                        "qualifiers": fact.qualifiers,
+                    }
+                    for fact in allowed_facts
+                ],
+            }
             provider = get_llm_provider()
             try:
-                writer_inputs = {
-                    "paragraph_id": str(paragraph.id),
-                    "paragraph_spec": paragraph.spec_json,
-                    "allowed_facts": [
-                        {
-                            "fact_id": str(fact.id),
-                            "content": fact.content,
-                            "qualifiers": fact.qualifiers,
-                        }
-                        for fact in allowed_facts
-                    ],
-                }
                 writer_result = provider.generate_paragraph(inputs=writer_inputs)
             except Exception:
-                paragraph.status = "FAILED_GENERATION"
-                job.status = "FAILED"
-                session.add(paragraph)
-                session.add(job)
-                await session.commit()
-                await engine.dispose()
-                return
+                try:
+                    writer_result = provider.generate_paragraph(inputs=writer_inputs)
+                except Exception:
+                    paragraph.status = "FAILED_GENERATION"
+                    job.status = "FAILED"
+                    session.add(paragraph)
+                    session.add(job)
+                    await session.commit()
+                    await engine.dispose()
+                    return
             writer_payload = writer_result.outputs
 
             try:
@@ -82,13 +85,20 @@ async def run_generate_job(job_id: UUID, paragraph_id: UUID) -> None:
                     writer_payload, allowed_fact_ids=set(paragraph.allowed_fact_ids)
                 )
             except ValueError:
-                paragraph.status = "FAILED_GENERATION"
-                job.status = "FAILED"
-                session.add(paragraph)
-                session.add(job)
-                await session.commit()
-                await engine.dispose()
-                return
+                try:
+                    writer_result = provider.generate_paragraph(inputs=writer_inputs)
+                    writer_payload = writer_result.outputs
+                    validate_writer_output(
+                        writer_payload, allowed_fact_ids=set(paragraph.allowed_fact_ids)
+                    )
+                except ValueError:
+                    paragraph.status = "FAILED_GENERATION"
+                    job.status = "FAILED"
+                    session.add(paragraph)
+                    session.add(job)
+                    await session.commit()
+                    await engine.dispose()
+                    return
 
             for sentence_payload in writer_payload["paragraph"].get("sentences", []):
                 sentence = Sentence(
@@ -170,32 +180,42 @@ async def run_verify_job(job_id: UUID, paragraph_id: UUID) -> None:
                 }
             )
 
+        verifier_inputs = {
+            "paragraph_id": str(paragraph.id),
+            "sentences": sentence_inputs,
+        }
         provider = get_llm_provider()
         try:
-            verifier_inputs = {
-                "paragraph_id": str(paragraph.id),
-                "sentences": sentence_inputs,
-            }
             verifier_result = provider.verify_paragraph(inputs=verifier_inputs)
         except Exception:
-            job.status = "FAILED"
-            paragraph.status = "NEEDS_REVISION"
-            session.add(paragraph)
-            session.add(job)
-            await session.commit()
-            await engine.dispose()
-            return
+            try:
+                verifier_result = provider.verify_paragraph(inputs=verifier_inputs)
+            except Exception:
+                job.status = "FAILED"
+                paragraph.status = "NEEDS_REVISION"
+                session.add(paragraph)
+                session.add(job)
+                await session.commit()
+                await engine.dispose()
+                return
         verifier_payload = verifier_result.outputs
         try:
             validate_verifier_output(verifier_payload, sentence_orders=[s.order for s in sentences])
         except ValueError:
-            job.status = "FAILED"
-            paragraph.status = "NEEDS_REVISION"
-            session.add(paragraph)
-            session.add(job)
-            await session.commit()
-            await engine.dispose()
-            return
+            try:
+                verifier_result = provider.verify_paragraph(inputs=verifier_inputs)
+                verifier_payload = verifier_result.outputs
+                validate_verifier_output(
+                    verifier_payload, sentence_orders=[s.order for s in sentences]
+                )
+            except ValueError:
+                job.status = "FAILED"
+                paragraph.status = "NEEDS_REVISION"
+                session.add(paragraph)
+                session.add(job)
+                await session.commit()
+                await engine.dispose()
+                return
 
         for sentence in sentences:
             result = next(

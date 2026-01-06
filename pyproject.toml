@@ -52,6 +52,12 @@ select = ["E", "F", "I", "UP", "B"]
 testpaths = ["tests"]
 addopts = ["-q"]
 
+[tool.pyright]
+include = ["src"]
+venvPath = "."
+venv = ".venv"
+pythonVersion = "3.12"
+
 [tool.mypy]
 python_version = "3.12"
 warn_unused_ignores = true
