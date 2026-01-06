@@ -12,7 +12,7 @@ class RetrievedFact:
 
 
 class Retriever(Protocol):
-    def retrieve(
+    async def retrieve(
         self,
         *,
         session: AsyncSession,
