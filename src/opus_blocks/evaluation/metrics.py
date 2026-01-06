@@ -9,6 +9,15 @@ class EvaluationMetrics:
     correct_refusal_rate: float
     over_refusal_rate: float
 
+    def to_dict(self) -> dict[str, float]:
+        return {
+            "sentence_support_rate": self.sentence_support_rate,
+            "false_support_rate": self.false_support_rate,
+            "verified_paragraph_rate": self.verified_paragraph_rate,
+            "correct_refusal_rate": self.correct_refusal_rate,
+            "over_refusal_rate": self.over_refusal_rate,
+        }
+
 
 def compute_support_rate(total_sentences: int, supported_sentences: int) -> float:
     if total_sentences == 0:
