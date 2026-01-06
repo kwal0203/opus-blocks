@@ -16,6 +16,7 @@ from opus_blocks.models.job import Job
 from opus_blocks.models.paragraph import Paragraph
 from opus_blocks.models.sentence import Sentence
 from opus_blocks.models.sentence_fact_link import SentenceFactLink
+from opus_blocks.services.runs import get_latest_run_by_type, update_run_outputs
 from opus_blocks.tasks.celery_app import celery_app
 
 
@@ -99,6 +100,18 @@ async def run_generate_job(job_id: UUID, paragraph_id: UUID) -> None:
                     await session.commit()
                     await engine.dispose()
                     return
+
+            latest_run = await get_latest_run_by_type(session, paragraph.id, "WRITER")
+            if latest_run:
+                await update_run_outputs(
+                    session,
+                    run_id=latest_run.id,
+                    outputs_json=writer_payload,
+                    token_prompt=writer_result.metadata.token_prompt,
+                    token_completion=writer_result.metadata.token_completion,
+                    cost_usd=writer_result.metadata.cost_usd,
+                    latency_ms=writer_result.metadata.latency_ms,
+                )
 
             for sentence_payload in writer_payload["paragraph"].get("sentences", []):
                 sentence = Sentence(
@@ -216,6 +229,18 @@ async def run_verify_job(job_id: UUID, paragraph_id: UUID) -> None:
                 await session.commit()
                 await engine.dispose()
                 return
+
+        latest_run = await get_latest_run_by_type(session, paragraph.id, "VERIFIER")
+        if latest_run:
+            await update_run_outputs(
+                session,
+                run_id=latest_run.id,
+                outputs_json=verifier_payload,
+                token_prompt=verifier_result.metadata.token_prompt,
+                token_completion=verifier_result.metadata.token_completion,
+                cost_usd=verifier_result.metadata.cost_usd,
+                latency_ms=verifier_result.metadata.latency_ms,
+            )
 
         for sentence in sentences:
             result = next(

@@ -476,3 +476,37 @@ async def test_verify_uses_verifier_output(
         assert paragraph_response.json()["status"] == "NEEDS_REVISION"
     finally:
         settings.storage_root = original_root
+
+
+@pytest.mark.anyio
+async def test_generate_updates_writer_run(async_client: AsyncClient, tmp_path: Path) -> None:
+    original_root = settings.storage_root
+    settings.storage_root = str(tmp_path)
+    try:
+        token = await _register_and_login(async_client)
+        headers = {"Authorization": f"Bearer {token}"}
+        fact = await _create_fact(async_client, token)
+        paragraph = await _create_paragraph(async_client, token, [fact["id"]])
+
+        generate_response = await async_client.post(
+            f"/api/v1/paragraphs/{paragraph['id']}/generate", headers=headers
+        )
+        assert generate_response.status_code == 200
+        generate_job = generate_response.json()
+
+        original_url = settings.database_url
+        settings.database_url = os.environ["OPUS_BLOCKS_TEST_DATABASE_URL"]
+        try:
+            await run_generate_job(uuid.UUID(generate_job["id"]), uuid.UUID(paragraph["id"]))
+        finally:
+            settings.database_url = original_url
+
+        runs_response = await async_client.get(
+            f"/api/v1/paragraphs/{paragraph['id']}/runs", headers=headers
+        )
+        assert runs_response.status_code == 200
+        runs = runs_response.json()
+        writer_run = next(run for run in runs if run["run_type"] == "WRITER")
+        assert "paragraph" in writer_run["outputs_json"]
+    finally:
+        settings.storage_root = original_root

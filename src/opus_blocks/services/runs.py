@@ -56,6 +56,40 @@ async def create_run(
     return run
 
 
+async def get_latest_run_by_type(
+    session: AsyncSession, paragraph_id: UUID, run_type: str
+) -> Run | None:
+    result = await session.execute(
+        select(Run)
+        .where(Run.paragraph_id == paragraph_id, Run.run_type == run_type)
+        .order_by(Run.created_at.desc())
+        .limit(1)
+    )
+    return result.scalar_one_or_none()
+
+
+async def update_run_outputs(
+    session: AsyncSession,
+    run_id: UUID,
+    outputs_json: dict,
+    token_prompt: int | None = None,
+    token_completion: int | None = None,
+    cost_usd: float | None = None,
+    latency_ms: int | None = None,
+) -> Run:
+    result = await session.execute(select(Run).where(Run.id == run_id))
+    run = result.scalar_one()
+    run.outputs_json = outputs_json
+    run.token_prompt = token_prompt
+    run.token_completion = token_completion
+    run.cost_usd = cost_usd
+    run.latency_ms = latency_ms
+    session.add(run)
+    await session.commit()
+    await session.refresh(run)
+    return run
+
+
 async def list_paragraph_runs(
     session: AsyncSession, owner_id: UUID, paragraph_id: UUID
 ) -> list[Run]:
