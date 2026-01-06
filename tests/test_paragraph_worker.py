@@ -212,6 +212,59 @@ async def test_verify_rollup_requires_supported_sentences(
 
 
 @pytest.mark.anyio
+async def test_verify_populates_failure_modes(async_client: AsyncClient, tmp_path: Path) -> None:
+    original_root = settings.storage_root
+    settings.storage_root = str(tmp_path)
+    try:
+        token = await _register_and_login(async_client)
+        headers = {"Authorization": f"Bearer {token}"}
+        paragraph = await _create_paragraph(async_client, token)
+
+        sentence_response = await async_client.post(
+            "/api/v1/sentences",
+            json={
+                "paragraph_id": paragraph["id"],
+                "order": 1,
+                "sentence_type": "topic",
+                "text": "Uncited statement.",
+                "is_user_edited": False,
+            },
+            headers=headers,
+        )
+        assert sentence_response.status_code == 201
+
+        verify_response = await async_client.post(
+            f"/api/v1/paragraphs/{paragraph['id']}/verify", headers=headers
+        )
+        assert verify_response.status_code == 200
+        verify_job = verify_response.json()
+
+        original_url = settings.database_url
+        settings.database_url = os.environ["OPUS_BLOCKS_TEST_DATABASE_URL"]
+        try:
+            await run_verify_job(uuid.UUID(verify_job["id"]), uuid.UUID(paragraph["id"]))
+        finally:
+            settings.database_url = original_url
+
+        sentences_response = await async_client.get(
+            f"/api/v1/sentences/paragraph/{paragraph['id']}", headers=headers
+        )
+        assert sentences_response.status_code == 200
+        sentence = sentences_response.json()[0]
+        assert sentence["supported"] is False
+        assert sentence["verifier_failure_modes"] == ["UNCITED_CLAIM"]
+        assert sentence["verifier_explanation"] == "Placeholder verification."
+
+        paragraph_response = await async_client.get(
+            f"/api/v1/paragraphs/{paragraph['id']}", headers=headers
+        )
+        assert paragraph_response.status_code == 200
+        assert paragraph_response.json()["status"] == "NEEDS_REVISION"
+    finally:
+        settings.storage_root = original_root
+
+
+@pytest.mark.anyio
 async def test_generate_creates_sentence_links(async_client: AsyncClient, tmp_path: Path) -> None:
     original_root = settings.storage_root
     settings.storage_root = str(tmp_path)
