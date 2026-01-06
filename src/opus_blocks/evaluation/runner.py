@@ -161,3 +161,8 @@ def evaluate_regression_gate(
         and diffs["false_support_rate"] <= 0.0
     )
     return RegressionGateResult(passed=passed, diffs=diffs)
+
+
+def write_baseline(path: Path, metrics: EvaluationMetrics) -> None:
+    payload = {"baseline_metrics": metrics.to_dict()}
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True))

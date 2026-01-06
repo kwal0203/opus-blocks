@@ -8,12 +8,8 @@ from opus_blocks.evaluation.runner import (
     evaluate_regression_gate,
     load_golden_dataset,
     run_golden_set,
+    write_baseline,
 )
-
-
-def _write_baseline(path: Path, metrics: dict[str, float]) -> None:
-    payload = {"baseline_metrics": metrics}
-    path.write_text(json.dumps(payload, indent=2, sort_keys=True))
 
 
 def main() -> int:
@@ -57,7 +53,7 @@ def main() -> int:
     print(json.dumps(summary, indent=2, sort_keys=True))
 
     if args.baseline_out:
-        _write_baseline(args.baseline_out, result.metrics.to_dict())
+        write_baseline(args.baseline_out, result.metrics)
 
     return 0 if gate.passed else 1
 
