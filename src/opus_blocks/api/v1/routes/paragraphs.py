@@ -15,7 +15,7 @@ from opus_blocks.schemas.run import RunRead
 from opus_blocks.schemas.sentence import SentenceRead
 from opus_blocks.schemas.sentence_fact_link import SentenceFactLinkRead
 from opus_blocks.services.facts import list_manuscript_facts
-from opus_blocks.services.jobs import create_job
+from opus_blocks.services.jobs import create_job, enqueue_job
 from opus_blocks.services.paragraphs import (
     create_paragraph,
     get_paragraph,
@@ -78,6 +78,7 @@ async def generate_paragraph(paragraph_id: UUID, session: DbSession, user: Curre
     await session.commit()
 
     job = await create_job(session, user.id, "GENERATE_PARAGRAPH", paragraph.id)
+    enqueue_job("generate_paragraph", job.id, paragraph.id)
     return JobRead.model_validate(job)
 
 
@@ -106,6 +107,7 @@ async def verify_paragraph(paragraph_id: UUID, session: DbSession, user: Current
     )
 
     job = await create_job(session, user.id, "VERIFY_PARAGRAPH", paragraph.id)
+    enqueue_job("verify_paragraph", job.id, paragraph.id)
     return JobRead.model_validate(job)
 
 

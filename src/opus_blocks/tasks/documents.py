@@ -1,5 +1,6 @@
 import asyncio
 import hashlib
+import io
 import uuid
 from pathlib import Path
 from uuid import UUID
@@ -33,19 +34,51 @@ def _bump_retry(job: Job, reason: str) -> None:
     job.progress = progress
 
 
-def _load_source_text(document: Document) -> tuple[str, str]:
+def _extract_pdf_text(content: bytes) -> tuple[str, list[dict[str, int]]]:
+    try:
+        from pypdf import PdfReader
+    except ImportError:
+        return "", []
+
+    reader = PdfReader(io.BytesIO(content))
+    text_parts: list[str] = []
+    page_offsets: list[dict[str, int]] = []
+    cursor = 0
+    separator = "\n\n"
+    for index, page in enumerate(reader.pages):
+        page_text = page.extract_text() or ""
+        start = cursor
+        text_parts.append(page_text)
+        cursor += len(page_text)
+        page_offsets.append({"page": index + 1, "start_char": start, "end_char": cursor})
+        if index < len(reader.pages) - 1:
+            text_parts.append(separator)
+            cursor += len(separator)
+    return "".join(text_parts), page_offsets
+
+
+def _load_source_text(document: Document) -> tuple[str, str, list[dict[str, int]]]:
     if not document.storage_uri:
-        return "", ""
+        return "", "", []
     try:
         content = Path(document.storage_uri).read_bytes()
     except OSError:
-        return "", ""
-    try:
-        text = content.decode("utf-8")
-    except UnicodeDecodeError:
-        text = content.decode("latin1", errors="ignore")
+        return "", "", []
+    text = ""
+    page_offsets: list[dict[str, int]] = []
+    if document.source_type == "PDF":
+        try:
+            text, page_offsets = _extract_pdf_text(content)
+        except Exception:
+            text = ""
+            page_offsets = []
+    if not text:
+        try:
+            text = content.decode("utf-8")
+        except UnicodeDecodeError:
+            text = content.decode("latin1", errors="ignore")
     content_hash = hashlib.sha256(content).hexdigest()
-    return text, content_hash
+    return text, content_hash, page_offsets
 
 
 async def run_extract_facts_job(job_id: UUID, document_id: UUID) -> None:
@@ -61,7 +94,7 @@ async def run_extract_facts_job(job_id: UUID, document_id: UUID) -> None:
         session.add(job)
         await session.commit()
 
-        source_text, source_text_hash = _load_source_text(document)
+        source_text, source_text_hash, page_offsets = _load_source_text(document)
         inputs_json = {
             "document_id": str(document.id),
             "source_type": document.source_type,
@@ -72,7 +105,7 @@ async def run_extract_facts_job(job_id: UUID, document_id: UUID) -> None:
             "document_id": str(document.id),
             "source_type": document.source_type,
             "source_text": source_text,
-            "span_map": {"page_offsets": {}},
+            "span_map": {"page_offsets": page_offsets},
         }
         provider = get_llm_provider()
         try:
