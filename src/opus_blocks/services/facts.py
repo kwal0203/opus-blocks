@@ -12,7 +12,7 @@ from opus_blocks.models.manuscript_document import ManuscriptDocument
 from opus_blocks.models.span import Span
 from opus_blocks.schemas.fact import ManualFactCreate
 from opus_blocks.schemas.span import FactSpanCreate
-from opus_blocks.services.embeddings import upsert_fact_embedding
+from opus_blocks.services.embeddings import embed_text, upsert_fact_embedding
 
 
 async def create_manual_fact(
@@ -48,6 +48,7 @@ async def create_manual_fact(
             vector_id=str(uuid.uuid4()),
             embedding_model="stub-embedding-v1",
             namespace=f"user:{owner_id}",
+            embedding=embed_text(fact.content),
         )
     return fact
 
@@ -173,5 +174,6 @@ async def create_fact_with_span(
         vector_id=str(uuid.uuid4()),
         embedding_model="stub-embedding-v1",
         namespace=f"user:{owner_id}",
+        embedding=embed_text(fact.content),
     )
     return fact
