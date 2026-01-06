@@ -146,6 +146,34 @@ async def run_extract_facts_job(job_id: UUID, document_id: UUID) -> None:
                 )
                 session.add(fact)
 
+            for fact_payload in output_payload.get("uncertain_facts", []):
+                span_data = fact_payload.get("source_span") or {}
+                span_id = None
+                if span_data.get("page") is not None:
+                    span = Span(
+                        document_id=document.id,
+                        page=span_data.get("page"),
+                        start_char=span_data.get("start_char"),
+                        end_char=span_data.get("end_char"),
+                        quote=span_data.get("quote"),
+                    )
+                    session.add(span)
+                    await session.flush()
+                    span_id = span.id
+                qualifiers = {"reason": fact_payload.get("reason")}
+                fact = Fact(
+                    owner_id=job.owner_id,
+                    document_id=document.id,
+                    span_id=span_id,
+                    source_type="PDF",
+                    content=fact_payload["content"],
+                    qualifiers=qualifiers,
+                    confidence=0.0,
+                    is_uncertain=True,
+                    created_by="LIBRARIAN",
+                )
+                session.add(fact)
+
         document.status = "FACTS_READY"
         job.status = "SUCCEEDED"
         session.add(document)
