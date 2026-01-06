@@ -1,7 +1,6 @@
 import json
 import time
 from dataclasses import dataclass
-from uuid import UUID
 
 from openai import OpenAI
 
@@ -36,7 +35,8 @@ class StubLLMProvider:
             provider=self._provider, model=self._model, prompt_version=self._prompt_version
         )
 
-    def extract_facts(self, *, document_id: UUID) -> LLMResult:
+    def extract_facts(self, *, inputs: dict) -> LLMResult:
+        document_id = inputs.get("document_id")
         outputs = {
             "facts": [
                 {
@@ -83,15 +83,11 @@ class StubLLMProvider:
         }
         return LLMResult(outputs=outputs, metadata=self._metadata())
 
-    def generate_paragraph(
-        self,
-        *,
-        paragraph_id: UUID,
-        section: str,
-        intent: str,
-        allowed_fact_ids: list[UUID],
-        linked_fact_id: UUID | None,
-    ) -> LLMResult:
+    def generate_paragraph(self, *, inputs: dict) -> LLMResult:
+        section = inputs.get("paragraph_spec", {}).get("section", "")
+        intent = inputs.get("paragraph_spec", {}).get("intent", "")
+        allowed_facts = inputs.get("allowed_facts", [])
+        linked_fact_id = allowed_facts[0].get("fact_id") if allowed_facts else None
         paragraph_payload: dict = {
             "section": section,
             "intent": intent,
@@ -118,15 +114,11 @@ class StubLLMProvider:
         outputs = {"paragraph": paragraph_payload}
         return LLMResult(outputs=outputs, metadata=self._metadata())
 
-    def verify_paragraph(
-        self,
-        *,
-        paragraph_id: UUID,
-        sentence_inputs: list[dict],
-    ) -> LLMResult:
+    def verify_paragraph(self, *, inputs: dict) -> LLMResult:
+        sentence_inputs = inputs.get("sentences", [])
         results: list[dict] = []
         for sentence in sentence_inputs:
-            verdict = "PASS" if sentence["has_links"] else "FAIL"
+            verdict = "PASS" if sentence.get("has_links") else "FAIL"
             results.append(
                 {
                     "order": sentence["order"],
@@ -183,53 +175,35 @@ class OpenAIProvider:
         metadata = self._metadata(start_time, response.usage)
         return LLMResult(outputs=outputs, metadata=metadata)
 
-    def extract_facts(self, *, document_id: UUID) -> LLMResult:
+    def extract_facts(self, *, inputs: dict) -> LLMResult:
         system_prompt = (
             "You are a scientific librarian. Return JSON only that matches the "
             "LibrarianOutput schema."
         )
         user_prompt = (
-            "Extract atomic facts from the document. "
+            "Extract atomic facts from the provided input. "
             "If no facts can be extracted, return empty lists. "
-            f"Document ID: {document_id}"
+            f"Input JSON: {json.dumps(inputs, ensure_ascii=True)}"
         )
         return self._request(system_prompt=system_prompt, user_prompt=user_prompt)
 
-    def generate_paragraph(
-        self,
-        *,
-        paragraph_id: UUID,
-        section: str,
-        intent: str,
-        allowed_fact_ids: list[UUID],
-        linked_fact_id: UUID | None,
-    ) -> LLMResult:
+    def generate_paragraph(self, *, inputs: dict) -> LLMResult:
         system_prompt = (
             "You are a scientific writer. Return JSON only that matches the WriterOutput schema."
         )
-        allowed_fact_ids_str = [str(fact_id) for fact_id in allowed_fact_ids]
         user_prompt = (
             "Write a paragraph that adheres to the spec and citations. "
-            f"Paragraph ID: {paragraph_id}. "
-            f"Section: {section}. Intent: {intent}. "
-            f"Allowed fact IDs: {allowed_fact_ids_str}. "
-            f"Primary fact ID: {linked_fact_id}."
+            f"Input JSON: {json.dumps(inputs, ensure_ascii=True)}"
         )
         return self._request(system_prompt=system_prompt, user_prompt=user_prompt)
 
-    def verify_paragraph(
-        self,
-        *,
-        paragraph_id: UUID,
-        sentence_inputs: list[dict],
-    ) -> LLMResult:
+    def verify_paragraph(self, *, inputs: dict) -> LLMResult:
         system_prompt = (
             "You are a strict verifier. Return JSON only that matches the VerifierOutput schema."
         )
         user_prompt = (
             "Verify the paragraph sentences against the provided facts. "
-            f"Paragraph ID: {paragraph_id}. "
-            f"Sentence inputs: {sentence_inputs}."
+            f"Input JSON: {json.dumps(inputs, ensure_ascii=True)}"
         )
         return self._request(system_prompt=system_prompt, user_prompt=user_prompt)
 

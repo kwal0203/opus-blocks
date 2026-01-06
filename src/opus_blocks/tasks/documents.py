@@ -1,5 +1,7 @@
 import asyncio
+import hashlib
 import uuid
+from pathlib import Path
 from uuid import UUID
 
 from sqlalchemy import select
@@ -22,6 +24,21 @@ def _build_session_factory() -> tuple[async_sessionmaker, AsyncEngine]:
     return session_factory, engine
 
 
+def _load_source_text(document: Document) -> tuple[str, str]:
+    if not document.storage_uri:
+        return "", ""
+    try:
+        content = Path(document.storage_uri).read_bytes()
+    except OSError:
+        return "", ""
+    try:
+        text = content.decode("utf-8")
+    except UnicodeDecodeError:
+        text = content.decode("latin1", errors="ignore")
+    content_hash = hashlib.sha256(content).hexdigest()
+    return text, content_hash
+
+
 async def run_extract_facts_job(job_id: UUID, document_id: UUID) -> None:
     session_factory, engine = _build_session_factory()
     async with session_factory() as session:
@@ -35,10 +52,22 @@ async def run_extract_facts_job(job_id: UUID, document_id: UUID) -> None:
         session.add(job)
         await session.commit()
 
-        inputs_json = {"document_id": str(document.id)}
+        source_text, source_text_hash = _load_source_text(document)
+        inputs_json = {
+            "document_id": str(document.id),
+            "source_type": document.source_type,
+            "source_text_hash": source_text_hash,
+            "source_text_len": len(source_text),
+        }
+        provider_inputs = {
+            "document_id": str(document.id),
+            "source_type": document.source_type,
+            "source_text": source_text,
+            "span_map": {"page_offsets": {}},
+        }
         provider = get_llm_provider()
         try:
-            llm_result = provider.extract_facts(document_id=document.id)
+            llm_result = provider.extract_facts(inputs=provider_inputs)
         except Exception:
             job.status = "FAILED"
             document.status = "FAILED_EXTRACTION"

@@ -42,26 +42,31 @@ async def run_generate_job(job_id: UUID, paragraph_id: UUID) -> None:
             select(Sentence).where(Sentence.paragraph_id == paragraph.id).limit(1)
         )
         if not existing_sentence:
-            linked_fact = None
+            allowed_facts: list[Fact] = []
             if paragraph.allowed_fact_ids and job.owner_id:
-                linked_fact = await session.scalar(
-                    select(Fact)
-                    .where(
+                facts_result = await session.execute(
+                    select(Fact).where(
                         Fact.id.in_(paragraph.allowed_fact_ids),
                         Fact.owner_id == job.owner_id,
                     )
-                    .limit(1)
                 )
+                allowed_facts = list(facts_result.scalars().all())
 
             provider = get_llm_provider()
             try:
-                writer_result = provider.generate_paragraph(
-                    paragraph_id=paragraph.id,
-                    section=paragraph.section,
-                    intent=paragraph.intent,
-                    allowed_fact_ids=paragraph.allowed_fact_ids,
-                    linked_fact_id=linked_fact.id if linked_fact else None,
-                )
+                writer_inputs = {
+                    "paragraph_id": str(paragraph.id),
+                    "paragraph_spec": paragraph.spec_json,
+                    "allowed_facts": [
+                        {
+                            "fact_id": str(fact.id),
+                            "content": fact.content,
+                            "qualifiers": fact.qualifiers,
+                        }
+                        for fact in allowed_facts
+                    ],
+                }
+                writer_result = provider.generate_paragraph(inputs=writer_inputs)
             except Exception:
                 paragraph.status = "FAILED_GENERATION"
                 job.status = "FAILED"
@@ -133,17 +138,45 @@ async def run_verify_job(job_id: UUID, paragraph_id: UUID) -> None:
         )
         sentences = list(sentences_result.scalars().all())
         sentence_inputs: list[dict] = []
-        for sentence in sentences:
-            has_links = await session.scalar(
-                select(SentenceFactLink).where(SentenceFactLink.sentence_id == sentence.id).limit(1)
+        fact_map: dict[UUID, Fact] = {}
+        if sentences and job.owner_id:
+            facts_result = await session.execute(
+                select(Fact).where(
+                    Fact.owner_id == job.owner_id,
+                )
             )
-            sentence_inputs.append({"order": sentence.order, "has_links": bool(has_links)})
+            fact_map = {fact.id: fact for fact in facts_result.scalars().all()}
+        for sentence in sentences:
+            link_rows = await session.execute(
+                select(SentenceFactLink).where(SentenceFactLink.sentence_id == sentence.id)
+            )
+            links = list(link_rows.scalars().all())
+            citation_ids = [link.fact_id for link in links]
+            citations_payload = [
+                {
+                    "fact_id": str(fact_id),
+                    "content": fact_map.get(fact_id).content if fact_map.get(fact_id) else None,
+                    "qualifiers": fact_map.get(fact_id).qualifiers if fact_map.get(fact_id) else {},
+                }
+                for fact_id in citation_ids
+            ]
+            sentence_inputs.append(
+                {
+                    "order": sentence.order,
+                    "text": sentence.text,
+                    "has_links": bool(citation_ids),
+                    "citations": [str(fact_id) for fact_id in citation_ids],
+                    "citation_facts": citations_payload,
+                }
+            )
 
         provider = get_llm_provider()
         try:
-            verifier_result = provider.verify_paragraph(
-                paragraph_id=paragraph.id, sentence_inputs=sentence_inputs
-            )
+            verifier_inputs = {
+                "paragraph_id": str(paragraph.id),
+                "sentences": sentence_inputs,
+            }
+            verifier_result = provider.verify_paragraph(inputs=verifier_inputs)
         except Exception:
             job.status = "FAILED"
             paragraph.status = "NEEDS_REVISION"
