@@ -155,8 +155,8 @@ async def run_verify_job(job_id: UUID, paragraph_id: UUID) -> None:
             citations_payload = [
                 {
                     "fact_id": str(fact_id),
-                    "content": fact_map.get(fact_id).content if fact_map.get(fact_id) else None,
-                    "qualifiers": fact_map.get(fact_id).qualifiers if fact_map.get(fact_id) else {},
+                    "content": fact.content if (fact := fact_map.get(fact_id)) else None,
+                    "qualifiers": fact.qualifiers if fact else {},
                 }
                 for fact_id in citation_ids
             ]
