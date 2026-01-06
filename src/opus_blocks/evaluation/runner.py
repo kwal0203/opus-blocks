@@ -69,10 +69,21 @@ class GoldenParagraph:
 class GoldenDataset:
     version: str
     paragraphs: list[GoldenParagraph]
+    baseline_metrics: EvaluationMetrics | None = None
 
 
 def load_golden_dataset(path: Path) -> GoldenDataset:
     raw = json.loads(path.read_text())
+    baseline_metrics = None
+    baseline = raw.get("baseline_metrics")
+    if baseline:
+        baseline_metrics = EvaluationMetrics(
+            sentence_support_rate=baseline.get("sentence_support_rate", 0.0),
+            false_support_rate=baseline.get("false_support_rate", 0.0),
+            verified_paragraph_rate=baseline.get("verified_paragraph_rate", 0.0),
+            correct_refusal_rate=baseline.get("correct_refusal_rate", 0.0),
+            over_refusal_rate=baseline.get("over_refusal_rate", 0.0),
+        )
     paragraphs = [
         GoldenParagraph(
             paragraph_id=item["paragraph_id"],
@@ -84,7 +95,11 @@ def load_golden_dataset(path: Path) -> GoldenDataset:
         )
         for item in raw.get("paragraphs", [])
     ]
-    return GoldenDataset(version=raw.get("version", "unknown"), paragraphs=paragraphs)
+    return GoldenDataset(
+        version=raw.get("version", "unknown"),
+        paragraphs=paragraphs,
+        baseline_metrics=baseline_metrics,
+    )
 
 
 def run_golden_set(dataset: GoldenDataset) -> EvaluationResult:
@@ -112,3 +127,37 @@ def run_golden_set(dataset: GoldenDataset) -> EvaluationResult:
         paragraph_evaluations=paragraph_evals,
         metrics=metrics,
     )
+
+
+@dataclass(frozen=True)
+class RegressionGateResult:
+    passed: bool
+    diffs: dict[str, float]
+
+
+def evaluate_regression_gate(
+    baseline: EvaluationMetrics | None,
+    current: EvaluationMetrics,
+    *,
+    min_support_rate: float = 0.0,
+    max_false_support_rate: float = 0.0,
+) -> RegressionGateResult:
+    if baseline is None:
+        return RegressionGateResult(passed=True, diffs={})
+
+    diffs = {
+        "sentence_support_rate": current.sentence_support_rate - baseline.sentence_support_rate,
+        "false_support_rate": current.false_support_rate - baseline.false_support_rate,
+        "verified_paragraph_rate": current.verified_paragraph_rate
+        - baseline.verified_paragraph_rate,
+        "correct_refusal_rate": current.correct_refusal_rate - baseline.correct_refusal_rate,
+        "over_refusal_rate": current.over_refusal_rate - baseline.over_refusal_rate,
+    }
+
+    passed = (
+        current.sentence_support_rate >= min_support_rate
+        and current.false_support_rate <= max_false_support_rate
+        and diffs["sentence_support_rate"] >= 0.0
+        and diffs["false_support_rate"] <= 0.0
+    )
+    return RegressionGateResult(passed=passed, diffs=diffs)
