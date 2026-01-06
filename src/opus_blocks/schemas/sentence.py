@@ -33,3 +33,7 @@ class SentenceRead(BaseModel):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class SentenceUpdate(BaseModel):
+    text: str = Field(..., min_length=1)

@@ -1,4 +1,5 @@
 import logging
+import uuid
 from uuid import UUID
 
 from sqlalchemy import select
@@ -17,12 +18,14 @@ async def create_job(
     job_type: str,
     target_id: UUID,
     status: str = "QUEUED",
+    trace_id: str | None = None,
 ) -> Job:
     job = Job(
         owner_id=owner_id,
         job_type=job_type,
         target_id=target_id,
         status=status,
+        trace_id=trace_id or str(uuid.uuid4()),
     )
     session.add(job)
     await session.commit()

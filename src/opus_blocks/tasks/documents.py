@@ -181,6 +181,7 @@ async def run_extract_facts_job(job_id: UUID, document_id: UUID) -> None:
                 token_completion=llm_result.metadata.token_completion,
                 cost_usd=llm_result.metadata.cost_usd,
                 latency_ms=llm_result.metadata.latency_ms,
+                trace_id=job.trace_id,
             )
 
             for fact_payload in output_payload.get("facts", []):

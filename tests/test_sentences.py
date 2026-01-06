@@ -185,3 +185,71 @@ async def test_verify_requires_fact_links(async_client: AsyncClient) -> None:
         headers=headers,
     )
     assert verify_response.status_code == 400
+
+
+@pytest.mark.anyio
+async def test_edit_sentence_triggers_reverify(async_client: AsyncClient) -> None:
+    token = await _register_and_login(async_client)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    paragraph = await _create_paragraph(async_client, token)
+    fact = await _create_fact(async_client, token)
+
+    sentence_response = await async_client.post(
+        "/api/v1/sentences",
+        json={
+            "paragraph_id": paragraph["id"],
+            "order": 1,
+            "sentence_type": "topic",
+            "text": "Original sentence.",
+            "is_user_edited": False,
+        },
+        headers=headers,
+    )
+    assert sentence_response.status_code == 201
+    sentence = sentence_response.json()
+
+    link_response = await async_client.post(
+        "/api/v1/sentences/links",
+        json={"sentence_id": sentence["id"], "fact_id": fact["id"], "score": 0.95},
+        headers=headers,
+    )
+    assert link_response.status_code == 201
+
+    verify_response = await async_client.post(
+        f"/api/v1/sentences/{sentence['id']}/verify",
+        json={
+            "supported": True,
+            "verifier_failure_modes": [],
+            "verifier_explanation": None,
+        },
+        headers=headers,
+    )
+    assert verify_response.status_code == 200
+
+    edit_response = await async_client.patch(
+        f"/api/v1/sentences/{sentence['id']}",
+        json={"text": "Edited sentence."},
+        headers=headers,
+    )
+    assert edit_response.status_code == 200
+    edit_job = edit_response.json()
+    assert edit_job["job_type"] == "VERIFY_PARAGRAPH"
+    assert edit_job["status"] == "QUEUED"
+
+    paragraph_response = await async_client.get(
+        f"/api/v1/paragraphs/{paragraph['id']}", headers=headers
+    )
+    assert paragraph_response.status_code == 200
+    assert paragraph_response.json()["status"] == "PENDING_VERIFY"
+
+    list_response = await async_client.get(
+        f"/api/v1/sentences/paragraph/{paragraph['id']}", headers=headers
+    )
+    assert list_response.status_code == 200
+    sentences = list_response.json()
+    assert sentences[0]["text"] == "Edited sentence."
+    assert sentences[0]["is_user_edited"] is True
+    assert sentences[0]["supported"] is False
+    assert sentences[0]["verifier_failure_modes"] == []
+    assert sentences[0]["verifier_explanation"] is None

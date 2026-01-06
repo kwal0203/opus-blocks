@@ -106,6 +106,40 @@ async def list_sentence_fact_links(
     return list(links_result.scalars().all())
 
 
+async def update_sentence_text(
+    session: AsyncSession,
+    owner_id: UUID,
+    sentence_id: UUID,
+    text: str,
+) -> Sentence:
+    sentence_result = await session.execute(
+        select(Sentence)
+        .join(Paragraph, Sentence.paragraph_id == Paragraph.id)
+        .join(Manuscript, Paragraph.manuscript_id == Manuscript.id)
+        .where(Sentence.id == sentence_id, Manuscript.owner_id == owner_id)
+    )
+    sentence = sentence_result.scalar_one_or_none()
+    if not sentence:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sentence not found")
+
+    paragraph = await session.scalar(select(Paragraph).where(Paragraph.id == sentence.paragraph_id))
+    if not paragraph:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Paragraph not found")
+
+    sentence.text = text
+    sentence.is_user_edited = True
+    sentence.supported = False
+    sentence.verifier_failure_modes = []
+    sentence.verifier_explanation = None
+    paragraph.status = "PENDING_VERIFY"
+
+    session.add(sentence)
+    session.add(paragraph)
+    await session.commit()
+    await session.refresh(sentence)
+    return sentence
+
+
 async def update_sentence_verification(
     session: AsyncSession,
     owner_id: UUID,
