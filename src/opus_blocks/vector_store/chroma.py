@@ -1,3 +1,5 @@
+from collections.abc import Sequence
+from typing import Any, cast
 from uuid import UUID
 
 import chromadb
@@ -23,9 +25,10 @@ class ChromaVectorStore(VectorStore):
         embedding: list[float] | None = None,
     ) -> None:
         embedding_value = embedding or embed_text(content)
+        embeddings = cast(list[Sequence[float]], [embedding_value])
         self._collection.upsert(
             ids=[str(fact_id)],
-            embeddings=[embedding_value],
+            embeddings=embeddings,
             metadatas=[{"fact_id": str(fact_id), "namespace": namespace}],
             documents=[content],
         )
@@ -42,26 +45,26 @@ class ChromaVectorStore(VectorStore):
         if not allowed_fact_ids:
             return []
         query_embedding = embed_text(query)
+        query_embeddings = cast(list[Sequence[float]], [query_embedding])
+        where_filter: dict[str, Any] = {
+            "namespace": namespace,
+            "fact_id": {"$in": [str(fact_id) for fact_id in allowed_fact_ids]},
+        }
         response = self._collection.query(
-            query_embeddings=[query_embedding],
+            query_embeddings=query_embeddings,
             n_results=limit,
-            where={
-                "namespace": namespace,
-                "fact_id": {"$in": [str(fact_id) for fact_id in allowed_fact_ids]},
-            },
+            where=where_filter,
             include=["metadatas", "distances"],
         )
         matches: list[VectorMatch] = []
-        for metadata, distance in zip(
-            response.get("metadatas", [[]])[0],
-            response.get("distances", [[]])[0],
-            strict=False,
-        ):
+        metadatas = response.get("metadatas") or [[]]
+        distances = response.get("distances") or [[]]
+        for metadata, distance in zip(metadatas[0], distances[0], strict=False):
             if not metadata:
                 continue
             matches.append(
                 VectorMatch(
-                    fact_id=UUID(metadata["fact_id"]),
+                    fact_id=UUID(cast(str, metadata["fact_id"])),
                     score=_distance_to_score(distance),
                 )
             )
