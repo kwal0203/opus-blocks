@@ -260,6 +260,16 @@ async def test_verify_populates_failure_modes(async_client: AsyncClient, tmp_pat
         )
         assert paragraph_response.status_code == 200
         assert paragraph_response.json()["status"] == "NEEDS_REVISION"
+
+        runs_response = await async_client.get(
+            f"/api/v1/paragraphs/{paragraph['id']}/runs", headers=headers
+        )
+        assert runs_response.status_code == 200
+        runs = runs_response.json()
+        verifier_run = next(run for run in runs if run["run_type"] == "VERIFIER")
+        assert verifier_run["outputs_json"]["sentence_results"][0]["failure_modes"] == [
+            "UNCITED_CLAIM"
+        ]
     finally:
         settings.storage_root = original_root
 

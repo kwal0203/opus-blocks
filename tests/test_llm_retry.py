@@ -247,3 +247,298 @@ async def test_retry_on_generate_and_verify(
 
     assert provider.calls["generate"] == 2
     assert provider.calls["verify"] == 2
+
+
+@pytest.mark.anyio
+async def test_extract_facts_retries_and_fails_on_non_json(
+    async_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    token = await _register_and_login(async_client)
+    headers = {"Authorization": f"Bearer {token}"}
+    document = await _create_document(async_client, token)
+
+    extract_response = await async_client.post(
+        f"/api/v1/documents/{document['id']}/extract_facts", headers=headers
+    )
+    assert extract_response.status_code == 200
+    extract_job = extract_response.json()
+
+    class NonJsonProvider:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def extract_facts(self, *, inputs: dict):  # type: ignore[no-untyped-def]
+            self.calls += 1
+            raise ValueError("bad json")
+
+    provider = NonJsonProvider()
+    monkeypatch.setattr("opus_blocks.tasks.documents.get_llm_provider", lambda: provider)
+
+    original_url = settings.database_url
+    settings.database_url = os.environ["OPUS_BLOCKS_TEST_DATABASE_URL"]
+    try:
+        await run_extract_facts_job(uuid.UUID(extract_job["id"]), uuid.UUID(document["id"]))
+    finally:
+        settings.database_url = original_url
+
+    job_response = await async_client.get(f"/api/v1/jobs/{extract_job['id']}", headers=headers)
+    assert job_response.status_code == 200
+    assert job_response.json()["status"] == "FAILED"
+    assert provider.calls == 2
+
+    document_response = await async_client.get(
+        f"/api/v1/documents/{document['id']}", headers=headers
+    )
+    assert document_response.status_code == 200
+    assert document_response.json()["status"] == "FAILED_EXTRACTION"
+
+
+@pytest.mark.anyio
+async def test_generate_retries_and_fails_on_non_json(
+    async_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    token = await _register_and_login(async_client)
+    headers = {"Authorization": f"Bearer {token}"}
+    fact = await _create_fact(async_client, token)
+    paragraph = await _create_paragraph(async_client, token, [fact["id"]])
+
+    generate_response = await async_client.post(
+        f"/api/v1/paragraphs/{paragraph['id']}/generate", headers=headers
+    )
+    assert generate_response.status_code == 200
+    generate_job = generate_response.json()
+
+    class NonJsonProvider:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def generate_paragraph(self, *, inputs: dict):  # type: ignore[no-untyped-def]
+            self.calls += 1
+            raise ValueError("bad json")
+
+    provider = NonJsonProvider()
+    monkeypatch.setattr("opus_blocks.tasks.paragraphs.get_llm_provider", lambda: provider)
+
+    original_url = settings.database_url
+    settings.database_url = os.environ["OPUS_BLOCKS_TEST_DATABASE_URL"]
+    try:
+        await run_generate_job(uuid.UUID(generate_job["id"]), uuid.UUID(paragraph["id"]))
+    finally:
+        settings.database_url = original_url
+
+    job_response = await async_client.get(f"/api/v1/jobs/{generate_job['id']}", headers=headers)
+    assert job_response.status_code == 200
+    assert job_response.json()["status"] == "FAILED"
+    assert provider.calls == 2
+
+    paragraph_response = await async_client.get(
+        f"/api/v1/paragraphs/{paragraph['id']}", headers=headers
+    )
+    assert paragraph_response.status_code == 200
+    assert paragraph_response.json()["status"] == "FAILED_GENERATION"
+
+
+@pytest.mark.anyio
+async def test_verify_retries_and_fails_on_non_json(
+    async_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    token = await _register_and_login(async_client)
+    headers = {"Authorization": f"Bearer {token}"}
+    fact = await _create_fact(async_client, token)
+    paragraph = await _create_paragraph(async_client, token, [fact["id"]])
+
+    generate_response = await async_client.post(
+        f"/api/v1/paragraphs/{paragraph['id']}/generate", headers=headers
+    )
+    assert generate_response.status_code == 200
+    generate_job = generate_response.json()
+
+    original_url = settings.database_url
+    settings.database_url = os.environ["OPUS_BLOCKS_TEST_DATABASE_URL"]
+    try:
+        await run_generate_job(uuid.UUID(generate_job["id"]), uuid.UUID(paragraph["id"]))
+    finally:
+        settings.database_url = original_url
+
+    verify_response = await async_client.post(
+        f"/api/v1/paragraphs/{paragraph['id']}/verify", headers=headers
+    )
+    assert verify_response.status_code == 200
+    verify_job = verify_response.json()
+
+    class NonJsonProvider:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def verify_paragraph(self, *, inputs: dict):  # type: ignore[no-untyped-def]
+            self.calls += 1
+            raise ValueError("bad json")
+
+    provider = NonJsonProvider()
+    monkeypatch.setattr("opus_blocks.tasks.paragraphs.get_llm_provider", lambda: provider)
+
+    settings.database_url = os.environ["OPUS_BLOCKS_TEST_DATABASE_URL"]
+    try:
+        await run_verify_job(uuid.UUID(verify_job["id"]), uuid.UUID(paragraph["id"]))
+    finally:
+        settings.database_url = original_url
+
+    job_response = await async_client.get(f"/api/v1/jobs/{verify_job['id']}", headers=headers)
+    assert job_response.status_code == 200
+    assert job_response.json()["status"] == "FAILED"
+    assert provider.calls == 2
+
+    paragraph_response = await async_client.get(
+        f"/api/v1/paragraphs/{paragraph['id']}", headers=headers
+    )
+    assert paragraph_response.status_code == 200
+    assert paragraph_response.json()["status"] == "NEEDS_REVISION"
+
+
+@pytest.mark.anyio
+async def test_extract_facts_retries_and_fails_on_invalid_contract(
+    async_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    token = await _register_and_login(async_client)
+    headers = {"Authorization": f"Bearer {token}"}
+    document = await _create_document(async_client, token)
+
+    extract_response = await async_client.post(
+        f"/api/v1/documents/{document['id']}/extract_facts", headers=headers
+    )
+    assert extract_response.status_code == 200
+    extract_job = extract_response.json()
+
+    class InvalidContractProvider:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def extract_facts(self, *, inputs: dict):  # type: ignore[no-untyped-def]
+            self.calls += 1
+            document_id = inputs["document_id"]
+            return Result(
+                {
+                    "facts": [
+                        {
+                            "content": "Duplicate fact.",
+                            "source_type": "PDF",
+                            "source_span": {
+                                "document_id": document_id,
+                                "page": 1,
+                                "start_char": 0,
+                                "end_char": 5,
+                                "quote": "Dup",
+                            },
+                            "qualifiers": {},
+                            "confidence": 0.9,
+                        },
+                        {
+                            "content": "Duplicate fact.",
+                            "source_type": "PDF",
+                            "source_span": {
+                                "document_id": document_id,
+                                "page": 1,
+                                "start_char": 0,
+                                "end_char": 5,
+                                "quote": "Dup",
+                            },
+                            "qualifiers": {},
+                            "confidence": 0.9,
+                        },
+                    ],
+                    "uncertain_facts": [],
+                }
+            )
+
+    provider = InvalidContractProvider()
+    monkeypatch.setattr("opus_blocks.tasks.documents.get_llm_provider", lambda: provider)
+
+    original_url = settings.database_url
+    settings.database_url = os.environ["OPUS_BLOCKS_TEST_DATABASE_URL"]
+    try:
+        await run_extract_facts_job(uuid.UUID(extract_job["id"]), uuid.UUID(document["id"]))
+    finally:
+        settings.database_url = original_url
+
+    job_response = await async_client.get(f"/api/v1/jobs/{extract_job['id']}", headers=headers)
+    assert job_response.status_code == 200
+    assert job_response.json()["status"] == "FAILED"
+    assert provider.calls == 2
+
+    document_response = await async_client.get(
+        f"/api/v1/documents/{document['id']}", headers=headers
+    )
+    assert document_response.status_code == 200
+    assert document_response.json()["status"] == "FAILED_EXTRACTION"
+
+
+@pytest.mark.anyio
+async def test_verify_retries_and_fails_on_invalid_contract(
+    async_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    token = await _register_and_login(async_client)
+    headers = {"Authorization": f"Bearer {token}"}
+    fact = await _create_fact(async_client, token)
+    paragraph = await _create_paragraph(async_client, token, [fact["id"]])
+
+    generate_response = await async_client.post(
+        f"/api/v1/paragraphs/{paragraph['id']}/generate", headers=headers
+    )
+    assert generate_response.status_code == 200
+    generate_job = generate_response.json()
+
+    original_url = settings.database_url
+    settings.database_url = os.environ["OPUS_BLOCKS_TEST_DATABASE_URL"]
+    try:
+        await run_generate_job(uuid.UUID(generate_job["id"]), uuid.UUID(paragraph["id"]))
+    finally:
+        settings.database_url = original_url
+
+    verify_response = await async_client.post(
+        f"/api/v1/paragraphs/{paragraph['id']}/verify", headers=headers
+    )
+    assert verify_response.status_code == 200
+    verify_job = verify_response.json()
+
+    class InvalidContractProvider:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def verify_paragraph(self, *, inputs: dict):  # type: ignore[no-untyped-def]
+            self.calls += 1
+            return Result(
+                {
+                    "overall_pass": False,
+                    "sentence_results": [
+                        {
+                            "order": inputs["sentences"][0]["order"],
+                            "verdict": "FAIL",
+                            "failure_modes": [],
+                            "explanation": "Missing failure modes.",
+                            "required_fix": "Add citations.",
+                            "suggested_rewrite": None,
+                        }
+                    ],
+                    "missing_evidence_summary": [],
+                }
+            )
+
+    provider = InvalidContractProvider()
+    monkeypatch.setattr("opus_blocks.tasks.paragraphs.get_llm_provider", lambda: provider)
+
+    settings.database_url = os.environ["OPUS_BLOCKS_TEST_DATABASE_URL"]
+    try:
+        await run_verify_job(uuid.UUID(verify_job["id"]), uuid.UUID(paragraph["id"]))
+    finally:
+        settings.database_url = original_url
+
+    job_response = await async_client.get(f"/api/v1/jobs/{verify_job['id']}", headers=headers)
+    assert job_response.status_code == 200
+    assert job_response.json()["status"] == "FAILED"
+    assert provider.calls == 2
+
+    paragraph_response = await async_client.get(
+        f"/api/v1/paragraphs/{paragraph['id']}", headers=headers
+    )
+    assert paragraph_response.status_code == 200
+    assert paragraph_response.json()["status"] == "NEEDS_REVISION"

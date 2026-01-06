@@ -56,7 +56,11 @@ async def _create_paragraph(async_client: AsyncClient, token: str) -> dict:
 
 
 class BadWriterProvider:
+    def __init__(self) -> None:
+        self.calls = 0
+
     def generate_paragraph(self, *, inputs: dict):  # type: ignore[no-untyped-def]
+        self.calls += 1
         # Missing citations should fail contract validation, even on retry.
         return type(
             "Result",
@@ -108,9 +112,8 @@ async def test_invalid_writer_output_fails_job(
     assert generate_response.status_code == 200
     generate_job = generate_response.json()
 
-    monkeypatch.setattr(
-        "opus_blocks.tasks.paragraphs.get_llm_provider", lambda: BadWriterProvider()
-    )
+    provider = BadWriterProvider()
+    monkeypatch.setattr("opus_blocks.tasks.paragraphs.get_llm_provider", lambda: provider)
 
     original_url = settings.database_url
     settings.database_url = os.environ["OPUS_BLOCKS_TEST_DATABASE_URL"]
@@ -122,3 +125,4 @@ async def test_invalid_writer_output_fails_job(
     job_response = await async_client.get(f"/api/v1/jobs/{generate_job['id']}", headers=headers)
     assert job_response.status_code == 200
     assert job_response.json()["status"] == "FAILED"
+    assert provider.calls == 2
