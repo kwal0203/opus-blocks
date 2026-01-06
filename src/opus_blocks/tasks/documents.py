@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 
 from opus_blocks.contracts.agent_contracts import validate_librarian_output
+from opus_blocks.core.circuit_breaker import CircuitBreakerOpen, get_llm_circuit_breaker
 from opus_blocks.core.config import settings
 from opus_blocks.llm.provider import get_llm_provider
 from opus_blocks.models.document import Document
@@ -108,13 +109,36 @@ async def run_extract_facts_job(job_id: UUID, document_id: UUID) -> None:
             "span_map": {"page_offsets": page_offsets},
         }
         provider = get_llm_provider()
+        breaker = get_llm_circuit_breaker()
         try:
+            breaker.allow_request()
             llm_result = provider.extract_facts(inputs=provider_inputs)
         except Exception as exc:
+            if isinstance(exc, CircuitBreakerOpen):
+                job.status = "FAILED"
+                document.status = "FAILED_EXTRACTION"
+                job.error = str(exc)
+                session.add(job)
+                session.add(document)
+                await session.commit()
+                await engine.dispose()
+                return
+            breaker.record_failure()
             _bump_retry(job, f"extract_facts: {exc}")
             try:
+                breaker.allow_request()
                 llm_result = provider.extract_facts(inputs=provider_inputs)
             except Exception as retry_exc:
+                if isinstance(retry_exc, CircuitBreakerOpen):
+                    job.status = "FAILED"
+                    document.status = "FAILED_EXTRACTION"
+                    job.error = str(retry_exc)
+                    session.add(job)
+                    session.add(document)
+                    await session.commit()
+                    await engine.dispose()
+                    return
+                breaker.record_failure()
                 job.status = "FAILED"
                 document.status = "FAILED_EXTRACTION"
                 job.error = f"LLM extract failed: {retry_exc}"
@@ -130,6 +154,7 @@ async def run_extract_facts_job(job_id: UUID, document_id: UUID) -> None:
                 )
                 await engine.dispose()
                 return
+        breaker.record_success()
         output_payload = llm_result.outputs
 
         existing_facts = await session.scalar(

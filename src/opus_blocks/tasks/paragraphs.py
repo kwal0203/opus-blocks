@@ -9,6 +9,7 @@ from opus_blocks.contracts.agent_contracts import (
     validate_verifier_output,
     validate_writer_output,
 )
+from opus_blocks.core.circuit_breaker import CircuitBreakerOpen, get_llm_circuit_breaker
 from opus_blocks.core.config import settings
 from opus_blocks.llm.provider import get_llm_provider
 from opus_blocks.models.fact import Fact
@@ -90,13 +91,36 @@ async def run_generate_job(job_id: UUID, paragraph_id: UUID) -> None:
                 "retrieved_facts": retrieved_facts,
             }
             provider = get_llm_provider()
+            breaker = get_llm_circuit_breaker()
             try:
+                breaker.allow_request()
                 writer_result = provider.generate_paragraph(inputs=writer_inputs)
             except Exception as exc:
+                if isinstance(exc, CircuitBreakerOpen):
+                    paragraph.status = "FAILED_GENERATION"
+                    job.status = "FAILED"
+                    job.error = str(exc)
+                    session.add(paragraph)
+                    session.add(job)
+                    await session.commit()
+                    await engine.dispose()
+                    return
+                breaker.record_failure()
                 _bump_retry(job, f"generate_paragraph: {exc}")
                 try:
+                    breaker.allow_request()
                     writer_result = provider.generate_paragraph(inputs=writer_inputs)
                 except Exception as retry_exc:
+                    if isinstance(retry_exc, CircuitBreakerOpen):
+                        paragraph.status = "FAILED_GENERATION"
+                        job.status = "FAILED"
+                        job.error = str(retry_exc)
+                        session.add(paragraph)
+                        session.add(job)
+                        await session.commit()
+                        await engine.dispose()
+                        return
+                    breaker.record_failure()
                     paragraph.status = "FAILED_GENERATION"
                     job.status = "FAILED"
                     job.error = f"LLM generate failed: {retry_exc}"
@@ -112,6 +136,7 @@ async def run_generate_job(job_id: UUID, paragraph_id: UUID) -> None:
                     )
                     await engine.dispose()
                     return
+            breaker.record_success()
             writer_payload = writer_result.outputs
 
             try:
@@ -244,13 +269,36 @@ async def run_verify_job(job_id: UUID, paragraph_id: UUID) -> None:
             "sentences": sentence_inputs,
         }
         provider = get_llm_provider()
+        breaker = get_llm_circuit_breaker()
         try:
+            breaker.allow_request()
             verifier_result = provider.verify_paragraph(inputs=verifier_inputs)
         except Exception as exc:
+            if isinstance(exc, CircuitBreakerOpen):
+                job.status = "FAILED"
+                paragraph.status = "NEEDS_REVISION"
+                job.error = str(exc)
+                session.add(paragraph)
+                session.add(job)
+                await session.commit()
+                await engine.dispose()
+                return
+            breaker.record_failure()
             _bump_retry(job, f"verify_paragraph: {exc}")
             try:
+                breaker.allow_request()
                 verifier_result = provider.verify_paragraph(inputs=verifier_inputs)
             except Exception as retry_exc:
+                if isinstance(retry_exc, CircuitBreakerOpen):
+                    job.status = "FAILED"
+                    paragraph.status = "NEEDS_REVISION"
+                    job.error = str(retry_exc)
+                    session.add(paragraph)
+                    session.add(job)
+                    await session.commit()
+                    await engine.dispose()
+                    return
+                breaker.record_failure()
                 job.status = "FAILED"
                 paragraph.status = "NEEDS_REVISION"
                 job.error = f"LLM verify failed: {retry_exc}"
@@ -266,6 +314,7 @@ async def run_verify_job(job_id: UUID, paragraph_id: UUID) -> None:
                 )
                 await engine.dispose()
                 return
+        breaker.record_success()
         verifier_payload = verifier_result.outputs
         try:
             validate_verifier_output(verifier_payload, sentence_orders=[s.order for s in sentences])
