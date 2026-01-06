@@ -22,5 +22,13 @@ class Settings(BaseSettings):
     llm_prompt_version: str = "v1"
     llm_use_openai: bool = False
 
+    embeddings_provider: str = "stub"
+    embeddings_model: str = "text-embedding-3-small"
+    embeddings_use_openai: bool = False
+
+    vector_backend: str = "stub"
+    vector_collection: str = "opus_blocks_facts"
+    vector_persist_path: str = "storage/vector"
+
 
 settings = Settings()

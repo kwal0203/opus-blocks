@@ -1,10 +1,10 @@
-import uuid
 from uuid import UUID
 
 from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from opus_blocks.core.config import settings
 from opus_blocks.models.document import Document
 from opus_blocks.models.fact import Fact
 from opus_blocks.models.manuscript import Manuscript
@@ -12,7 +12,8 @@ from opus_blocks.models.manuscript_document import ManuscriptDocument
 from opus_blocks.models.span import Span
 from opus_blocks.schemas.fact import ManualFactCreate
 from opus_blocks.schemas.span import FactSpanCreate
-from opus_blocks.services.embeddings import embed_text, upsert_fact_embedding
+from opus_blocks.services.embeddings import upsert_fact_embedding_for_content
+from opus_blocks.vector_store import get_vector_store
 
 
 async def create_manual_fact(
@@ -42,13 +43,12 @@ async def create_manual_fact(
     await session.commit()
     await session.refresh(fact)
     if owner_id:
-        await upsert_fact_embedding(
+        await upsert_fact_embedding_for_content(
             session,
             fact.id,
-            vector_id=str(uuid.uuid4()),
-            embedding_model="stub-embedding-v1",
+            content=fact.content,
+            embedding_model=settings.embeddings_model,
             namespace=f"user:{owner_id}",
-            embedding=embed_text(fact.content),
         )
     return fact
 
@@ -168,12 +168,26 @@ async def create_fact_with_span(
     await session.refresh(fact)
     if span:
         await session.refresh(span)
-    await upsert_fact_embedding(
+    await upsert_fact_embedding_for_content(
         session,
         fact.id,
-        vector_id=str(uuid.uuid4()),
-        embedding_model="stub-embedding-v1",
+        content=fact.content,
+        embedding_model=settings.embeddings_model,
         namespace=f"user:{owner_id}",
-        embedding=embed_text(fact.content),
     )
     return fact
+
+
+async def delete_fact(session: AsyncSession, owner_id: UUID, fact_id: UUID) -> None:
+    result = await session.execute(
+        select(Fact).where(Fact.id == fact_id, Fact.owner_id == owner_id)
+    )
+    fact = result.scalar_one_or_none()
+    if not fact:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Fact not found")
+
+    namespace = f"user:{owner_id}"
+    store = get_vector_store()
+    await store.delete_fact(session=session, fact_id=fact.id, namespace=namespace)
+    await session.delete(fact)
+    await session.commit()

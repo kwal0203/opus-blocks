@@ -8,7 +8,8 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from opus_blocks.core.config import settings
 from opus_blocks.models.fact_embedding import FactEmbedding
-from opus_blocks.retrieval.stub import StubRetriever
+from opus_blocks.retrieval.vector import VectorStoreRetriever
+from opus_blocks.tools.embeddings_backfill import run_backfill
 
 
 @pytest.mark.anyio
@@ -127,7 +128,7 @@ async def test_retriever_orders_by_similarity(async_client: AsyncClient) -> None
         engine = create_async_engine(settings.database_url, pool_pre_ping=True)
         session_factory = async_sessionmaker(engine, expire_on_commit=False)
         async with session_factory() as session:
-            retriever = StubRetriever()
+            retriever = VectorStoreRetriever()
             results = await retriever.retrieve(
                 session=session,
                 owner_id=uuid.UUID(alpha_fact["owner_id"]),
@@ -139,6 +140,58 @@ async def test_retriever_orders_by_similarity(async_client: AsyncClient) -> None
                 limit=2,
             )
             assert results[0].fact_id == uuid.UUID(alpha_fact["id"])
+        await engine.dispose()
+    finally:
+        settings.database_url = original_url
+
+
+@pytest.mark.anyio
+async def test_backfill_embeddings_recreates_missing(async_client: AsyncClient) -> None:
+    email = f"user-{uuid.uuid4()}@example.com"
+    password = "Password123!"
+
+    register_response = await async_client.post(
+        "/api/v1/auth/register", json={"email": email, "password": password}
+    )
+    assert register_response.status_code == 201
+
+    login_response = await async_client.post(
+        "/api/v1/auth/login", json={"email": email, "password": password}
+    )
+    assert login_response.status_code == 200
+    token = login_response.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    fact_response = await async_client.post(
+        "/api/v1/facts/manual",
+        json={"content": "alpha fact"},
+        headers=headers,
+    )
+    assert fact_response.status_code == 201
+    fact = fact_response.json()
+
+    original_url = settings.database_url
+    settings.database_url = os.environ["OPUS_BLOCKS_TEST_DATABASE_URL"]
+    try:
+        engine = create_async_engine(settings.database_url, pool_pre_ping=True)
+        session_factory = async_sessionmaker(engine, expire_on_commit=False)
+        async with session_factory() as session:
+            result = await session.execute(
+                select(FactEmbedding).where(FactEmbedding.fact_id == fact["id"])
+            )
+            embedding = result.scalar_one_or_none()
+            assert embedding is not None
+            await session.delete(embedding)
+            await session.commit()
+
+        await run_backfill(owner_id=fact["owner_id"], limit=None)
+
+        async with session_factory() as session:
+            result = await session.execute(
+                select(FactEmbedding).where(FactEmbedding.fact_id == fact["id"])
+            )
+            embedding = result.scalar_one_or_none()
+            assert embedding is not None
         await engine.dispose()
     finally:
         settings.database_url = original_url
