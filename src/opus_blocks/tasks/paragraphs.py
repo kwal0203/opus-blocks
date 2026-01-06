@@ -54,13 +54,22 @@ async def run_generate_job(job_id: UUID, paragraph_id: UUID) -> None:
                 )
 
             provider = get_llm_provider()
-            writer_result = provider.generate_paragraph(
-                paragraph_id=paragraph.id,
-                section=paragraph.section,
-                intent=paragraph.intent,
-                allowed_fact_ids=paragraph.allowed_fact_ids,
-                linked_fact_id=linked_fact.id if linked_fact else None,
-            )
+            try:
+                writer_result = provider.generate_paragraph(
+                    paragraph_id=paragraph.id,
+                    section=paragraph.section,
+                    intent=paragraph.intent,
+                    allowed_fact_ids=paragraph.allowed_fact_ids,
+                    linked_fact_id=linked_fact.id if linked_fact else None,
+                )
+            except Exception:
+                paragraph.status = "FAILED_GENERATION"
+                job.status = "FAILED"
+                session.add(paragraph)
+                session.add(job)
+                await session.commit()
+                await engine.dispose()
+                return
             writer_payload = writer_result.outputs
 
             try:
@@ -131,9 +140,18 @@ async def run_verify_job(job_id: UUID, paragraph_id: UUID) -> None:
             sentence_inputs.append({"order": sentence.order, "has_links": bool(has_links)})
 
         provider = get_llm_provider()
-        verifier_result = provider.verify_paragraph(
-            paragraph_id=paragraph.id, sentence_inputs=sentence_inputs
-        )
+        try:
+            verifier_result = provider.verify_paragraph(
+                paragraph_id=paragraph.id, sentence_inputs=sentence_inputs
+            )
+        except Exception:
+            job.status = "FAILED"
+            paragraph.status = "NEEDS_REVISION"
+            session.add(paragraph)
+            session.add(job)
+            await session.commit()
+            await engine.dispose()
+            return
         verifier_payload = verifier_result.outputs
         try:
             validate_verifier_output(verifier_payload, sentence_orders=[s.order for s in sentences])

@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     llm_provider: str = "openai"
     llm_model: str = "gpt-4o-mini"
     llm_prompt_version: str = "v1"
+    llm_use_openai: bool = False
 
 
 settings = Settings()
