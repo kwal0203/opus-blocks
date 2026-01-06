@@ -193,6 +193,7 @@ async def test_edit_sentence_triggers_reverify(async_client: AsyncClient) -> Non
     headers = {"Authorization": f"Bearer {token}"}
 
     paragraph = await _create_paragraph(async_client, token)
+    fact = await _create_fact(async_client, token)
 
     sentence_response = await async_client.post(
         "/api/v1/sentences",
@@ -207,6 +208,13 @@ async def test_edit_sentence_triggers_reverify(async_client: AsyncClient) -> Non
     )
     assert sentence_response.status_code == 201
     sentence = sentence_response.json()
+
+    link_response = await async_client.post(
+        "/api/v1/sentences/links",
+        json={"sentence_id": sentence["id"], "fact_id": fact["id"], "score": 0.95},
+        headers=headers,
+    )
+    assert link_response.status_code == 201
 
     verify_response = await async_client.post(
         f"/api/v1/sentences/{sentence['id']}/verify",
