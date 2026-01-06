@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async
 
 from opus_blocks.contracts.agent_contracts import validate_librarian_output
 from opus_blocks.core.config import settings
+from opus_blocks.llm.provider import get_llm_provider
 from opus_blocks.models.document import Document
 from opus_blocks.models.fact import Fact
 from opus_blocks.models.job import Job
@@ -34,6 +35,11 @@ async def run_extract_facts_job(job_id: UUID, document_id: UUID) -> None:
         session.add(job)
         await session.commit()
 
+        inputs_json = {"document_id": str(document.id)}
+        provider = get_llm_provider()
+        llm_result = provider.extract_facts(document_id=document.id)
+        output_payload = llm_result.outputs
+
         if job.owner_id:
             await create_run(
                 session,
@@ -41,73 +47,21 @@ async def run_extract_facts_job(job_id: UUID, document_id: UUID) -> None:
                 run_type="LIBRARIAN",
                 paragraph_id=None,
                 document_id=document.id,
-                provider=settings.llm_provider,
-                model=settings.llm_model,
-                prompt_version=settings.llm_prompt_version,
-                inputs_json={"document_id": str(document.id)},
-                outputs_json={"status": "stub"},
+                provider=llm_result.metadata.provider,
+                model=llm_result.metadata.model,
+                prompt_version=llm_result.metadata.prompt_version,
+                inputs_json=inputs_json,
+                outputs_json=output_payload,
+                token_prompt=llm_result.metadata.token_prompt,
+                token_completion=llm_result.metadata.token_completion,
+                cost_usd=llm_result.metadata.cost_usd,
+                latency_ms=llm_result.metadata.latency_ms,
             )
 
         existing_facts = await session.scalar(
             select(Fact.id).where(Fact.document_id == document.id).limit(1)
         )
         if not existing_facts and job.owner_id:
-            placeholders = [
-                (
-                    1,
-                    0,
-                    24,
-                    "Placeholder extracted span.",
-                    "Placeholder extracted fact.",
-                    0.5,
-                    True,
-                ),
-                (
-                    2,
-                    50,
-                    80,
-                    "Additional placeholder span.",
-                    "Secondary extracted fact.",
-                    0.7,
-                    False,
-                ),
-                (
-                    None,
-                    None,
-                    None,
-                    None,
-                    "High-level extracted fact without span.",
-                    0.4,
-                    True,
-                ),
-            ]
-            output_payload = {
-                "facts": [
-                    {
-                        "content": content,
-                        "source_type": "PDF",
-                        "source_span": {
-                            "document_id": str(document.id),
-                            "page": page,
-                            "start_char": start_char,
-                            "end_char": end_char,
-                            "quote": quote,
-                        },
-                        "qualifiers": {},
-                        "confidence": confidence,
-                    }
-                    for (
-                        page,
-                        start_char,
-                        end_char,
-                        quote,
-                        content,
-                        confidence,
-                        _,
-                    ) in placeholders
-                ],
-                "uncertain_facts": [],
-            }
             try:
                 validate_librarian_output(output_payload)
             except ValueError:
@@ -118,23 +72,17 @@ async def run_extract_facts_job(job_id: UUID, document_id: UUID) -> None:
                 await session.commit()
                 await engine.dispose()
                 return
-            for (
-                page,
-                start_char,
-                end_char,
-                quote,
-                content,
-                confidence,
-                is_uncertain,
-            ) in placeholders:
+
+            for fact_payload in output_payload.get("facts", []):
+                span_data = fact_payload.get("source_span") or {}
                 span_id = None
-                if page is not None:
+                if span_data.get("page") is not None:
                     span = Span(
                         document_id=document.id,
-                        page=page,
-                        start_char=start_char,
-                        end_char=end_char,
-                        quote=quote,
+                        page=span_data.get("page"),
+                        start_char=span_data.get("start_char"),
+                        end_char=span_data.get("end_char"),
+                        quote=span_data.get("quote"),
                     )
                     session.add(span)
                     await session.flush()
@@ -143,11 +91,11 @@ async def run_extract_facts_job(job_id: UUID, document_id: UUID) -> None:
                     owner_id=job.owner_id,
                     document_id=document.id,
                     span_id=span_id,
-                    source_type="PDF",
-                    content=content,
-                    qualifiers={},
-                    confidence=confidence,
-                    is_uncertain=is_uncertain,
+                    source_type=fact_payload.get("source_type", "PDF"),
+                    content=fact_payload["content"],
+                    qualifiers=fact_payload.get("qualifiers", {}),
+                    confidence=fact_payload["confidence"],
+                    is_uncertain=False,
                     created_by="LIBRARIAN",
                 )
                 session.add(fact)
