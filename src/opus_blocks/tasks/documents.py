@@ -37,7 +37,16 @@ async def run_extract_facts_job(job_id: UUID, document_id: UUID) -> None:
 
         inputs_json = {"document_id": str(document.id)}
         provider = get_llm_provider()
-        llm_result = provider.extract_facts(document_id=document.id)
+        try:
+            llm_result = provider.extract_facts(document_id=document.id)
+        except Exception:
+            job.status = "FAILED"
+            document.status = "FAILED_EXTRACTION"
+            session.add(job)
+            session.add(document)
+            await session.commit()
+            await engine.dispose()
+            return
         output_payload = llm_result.outputs
 
         if job.owner_id:

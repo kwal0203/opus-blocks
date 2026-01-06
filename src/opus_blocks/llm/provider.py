@@ -1,5 +1,9 @@
+import json
+import time
 from dataclasses import dataclass
 from uuid import UUID
+
+from openai import OpenAI
 
 from opus_blocks.core.config import settings
 
@@ -141,12 +145,109 @@ class StubLLMProvider:
         return LLMResult(outputs=outputs, metadata=self._metadata())
 
 
-def get_llm_provider() -> StubLLMProvider:
+class OpenAIProvider:
+    def __init__(self, api_key: str, model: str, prompt_version: str) -> None:
+        self._client = OpenAI(api_key=api_key)
+        self._model = model
+        self._prompt_version = prompt_version
+
+    def _metadata(self, start_time: float, usage: object | None) -> LLMMetadata:
+        latency_ms = int((time.perf_counter() - start_time) * 1000)
+        token_prompt = getattr(usage, "prompt_tokens", None) if usage else None
+        token_completion = getattr(usage, "completion_tokens", None) if usage else None
+        return LLMMetadata(
+            provider="openai",
+            model=self._model,
+            prompt_version=self._prompt_version,
+            token_prompt=token_prompt,
+            token_completion=token_completion,
+            latency_ms=latency_ms,
+        )
+
+    def _request(self, *, system_prompt: str, user_prompt: str) -> LLMResult:
+        start_time = time.perf_counter()
+        response = self._client.chat.completions.create(
+            model=self._model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            response_format={"type": "json_object"},
+            temperature=0,
+        )
+        content = response.choices[0].message.content if response.choices else ""
+        try:
+            outputs = json.loads(content or "{}")
+        except json.JSONDecodeError as exc:
+            raise ValueError("OpenAI response was not valid JSON") from exc
+        metadata = self._metadata(start_time, response.usage)
+        return LLMResult(outputs=outputs, metadata=metadata)
+
+    def extract_facts(self, *, document_id: UUID) -> LLMResult:
+        system_prompt = (
+            "You are a scientific librarian. Return JSON only that matches the "
+            "LibrarianOutput schema."
+        )
+        user_prompt = (
+            "Extract atomic facts from the document. "
+            "If no facts can be extracted, return empty lists. "
+            f"Document ID: {document_id}"
+        )
+        return self._request(system_prompt=system_prompt, user_prompt=user_prompt)
+
+    def generate_paragraph(
+        self,
+        *,
+        paragraph_id: UUID,
+        section: str,
+        intent: str,
+        allowed_fact_ids: list[UUID],
+        linked_fact_id: UUID | None,
+    ) -> LLMResult:
+        system_prompt = (
+            "You are a scientific writer. Return JSON only that matches the WriterOutput schema."
+        )
+        allowed_fact_ids_str = [str(fact_id) for fact_id in allowed_fact_ids]
+        user_prompt = (
+            "Write a paragraph that adheres to the spec and citations. "
+            f"Paragraph ID: {paragraph_id}. "
+            f"Section: {section}. Intent: {intent}. "
+            f"Allowed fact IDs: {allowed_fact_ids_str}. "
+            f"Primary fact ID: {linked_fact_id}."
+        )
+        return self._request(system_prompt=system_prompt, user_prompt=user_prompt)
+
+    def verify_paragraph(
+        self,
+        *,
+        paragraph_id: UUID,
+        sentence_inputs: list[dict],
+    ) -> LLMResult:
+        system_prompt = (
+            "You are a strict verifier. Return JSON only that matches the VerifierOutput schema."
+        )
+        user_prompt = (
+            "Verify the paragraph sentences against the provided facts. "
+            f"Paragraph ID: {paragraph_id}. "
+            f"Sentence inputs: {sentence_inputs}."
+        )
+        return self._request(system_prompt=system_prompt, user_prompt=user_prompt)
+
+
+def get_llm_provider() -> StubLLMProvider | OpenAIProvider:
     provider_name = settings.llm_provider.lower()
-    if provider_name not in {"openai", "stub", "test"}:
-        raise ValueError(f"Unsupported LLM provider: {settings.llm_provider}")
-    return StubLLMProvider(
-        provider=provider_name,
-        model=settings.llm_model,
-        prompt_version=settings.llm_prompt_version,
-    )
+    if provider_name == "openai" and settings.llm_use_openai:
+        if not settings.openai_api_key:
+            raise ValueError("openai_api_key must be set when llm_use_openai is true")
+        return OpenAIProvider(
+            api_key=settings.openai_api_key,
+            model=settings.llm_model,
+            prompt_version=settings.llm_prompt_version,
+        )
+    if provider_name in {"openai", "stub", "test"}:
+        return StubLLMProvider(
+            provider=provider_name,
+            model=settings.llm_model,
+            prompt_version=settings.llm_prompt_version,
+        )
+    raise ValueError(f"Unsupported LLM provider: {settings.llm_provider}")
