@@ -36,5 +36,9 @@ class Settings(BaseSettings):
     rate_limit_upload: str = "30/minute"
     rate_limit_job: str = "30/minute"
 
+    alert_sentence_support_rate_min: float = 0.95
+    alert_paragraph_verified_rate_min: float = 0.95
+    alert_job_failure_rate_max: float = 0.05
+
 
 settings = Settings()

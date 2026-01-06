@@ -14,3 +14,6 @@ Vector store
 
 Infra ops
 - rate limits are configurable via `RATE_LIMIT_*` env vars; disabled by default in `.env.example`
+
+Monitoring
+- metrics snapshot + alerts: `uv run python scripts/run_metrics_snapshot.py`
