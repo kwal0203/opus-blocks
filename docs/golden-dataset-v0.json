@@ -1,0 +1,36 @@
+{
+  "version": "v0",
+  "baseline_metrics": {
+    "sentence_support_rate": 1.0,
+    "false_support_rate": 0.0,
+    "verified_paragraph_rate": 1.0,
+    "correct_refusal_rate": 1.0,
+    "over_refusal_rate": 0.0
+  },
+  "paragraphs": [
+    {
+      "paragraph_id": "00000000-0000-0000-0000-000000000001",
+      "expected_verified": true,
+      "sentences": [
+        {
+          "order": 1,
+          "expected_supported": true
+        },
+        {
+          "order": 2,
+          "expected_supported": true
+        }
+      ]
+    },
+    {
+      "paragraph_id": "00000000-0000-0000-0000-000000000002",
+      "expected_verified": false,
+      "sentences": [
+        {
+          "order": 1,
+          "expected_supported": false
+        }
+      ]
+    }
+  ]
+}
