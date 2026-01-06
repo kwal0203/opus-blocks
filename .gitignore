@@ -13,3 +13,4 @@ wheels/
 information/
 storage/
 .cache/
+.env
