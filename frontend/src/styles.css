@@ -1,15 +1,5 @@
-:root {
-  font-family: "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif;
-  color: #101316;
-  background: #0f1f1c;
-  --panel: #f6f1ea;
-  --panel-border: #e7d9cb;
-  --ink: #141414;
-  --accent: #d86a3b;
-  --accent-dark: #ab4e26;
-  --muted: #6a6a6a;
-  --soft: rgba(16, 19, 22, 0.08);
-}
+@import "./styles/tokens.css";
+@import "./styles/ui.css";
 
 * {
   box-sizing: border-box;
@@ -17,23 +7,24 @@
 
 body {
   margin: 0;
-  background: radial-gradient(circle at top, #16302a, #0f1f1c 45%, #0b1715);
+  background: radial-gradient(circle at top, var(--bg-accent), var(--bg) 45%, #0b1715);
 }
 
-.app {
-  max-width: 1100px;
+.app-shell {
+  max-width: 1400px;
   margin: 0 auto;
   padding: 32px 20px 80px;
 }
 
-.hero {
+.app-header {
   display: grid;
   grid-template-columns: minmax(0, 2fr) minmax(240px, 1fr);
   gap: 24px;
   padding: 24px 28px;
-  border-radius: 24px;
+  border-radius: var(--radius-xl);
   background: linear-gradient(120deg, rgba(255, 255, 255, 0.95), rgba(240, 228, 215, 0.92));
-  box-shadow: 0 18px 40px rgba(9, 18, 16, 0.35);
+  box-shadow: var(--shadow-strong);
+  margin-bottom: 28px;
 }
 
 .eyebrow {
@@ -44,7 +35,7 @@ body {
   margin: 0 0 12px;
 }
 
-.hero h1 {
+.app-header h1 {
   font-size: 2.4rem;
   margin: 0 0 12px;
 }
@@ -56,13 +47,13 @@ body {
 }
 
 .status-card {
-  background: #fff7ef;
-  border-radius: 18px;
+  background: var(--surface-strong);
+  border-radius: var(--radius-lg);
   padding: 16px;
   display: flex;
   flex-direction: column;
   gap: 12px;
-  border: 1px solid var(--panel-border);
+  border: 1px solid var(--surface-border);
 }
 
 .status-card span {
@@ -79,18 +70,42 @@ body {
 }
 
 .error {
-  color: #c6372a;
+  color: var(--danger);
   font-size: 0.9rem;
   margin: 8px 0 0;
 }
 
 .panel {
-  margin-top: 28px;
+  margin-top: 24px;
   padding: 24px 28px;
-  border-radius: 20px;
-  background: var(--panel);
-  border: 1px solid var(--panel-border);
-  box-shadow: 0 16px 30px rgba(9, 18, 16, 0.18);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  border: 1px solid var(--surface-border);
+  box-shadow: var(--shadow-soft);
+}
+
+.panel:first-child {
+  margin-top: 0;
+}
+
+.app-grid {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) minmax(0, 2fr) minmax(240px, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+
+.app-sidebar,
+.app-inspector {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.app-canvas {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
 }
 
 .panel h2 {
@@ -104,56 +119,11 @@ body {
   gap: 16px;
 }
 
-label {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  font-size: 0.9rem;
-  color: var(--ink);
-}
-
-input,
-textarea {
-  padding: 10px 12px;
-  border-radius: 12px;
-  border: 1px solid #d7c7b5;
-  background: #fffdf9;
-  font-size: 0.95rem;
-}
-
-textarea {
-  resize: vertical;
-}
-
 .actions {
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
   margin-top: 16px;
-}
-
-button {
-  border: none;
-  padding: 10px 18px;
-  border-radius: 999px;
-  background: #f2e1cf;
-  font-weight: 600;
-  cursor: pointer;
-  transition: transform 0.15s ease, background 0.15s ease;
-}
-
-button:hover {
-  transform: translateY(-1px);
-  background: #ead4be;
-}
-
-button.primary {
-  background: var(--accent);
-  color: white;
-}
-
-button.primary:hover {
-  background: var(--accent-dark);
 }
 
 .list {
@@ -162,28 +132,9 @@ button.primary:hover {
   gap: 12px;
 }
 
-.list article,
-.view .sentence,
-.view .facts div {
-  background: #fff;
-  padding: 12px 14px;
-  border-radius: 14px;
-  border: 1px solid #efe2d3;
-}
-
-.pill {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: #efe2d3;
-  color: #67473a;
-  font-size: 0.7rem;
-  margin-bottom: 8px;
-}
 
 .muted {
-  color: var(--muted);
+  color: var(--text-muted);
 }
 
 .textarea {
@@ -193,10 +144,6 @@ button.primary:hover {
 
 .job {
   margin-top: 12px;
-  background: #fff;
-  padding: 12px 14px;
-  border-radius: 12px;
-  border: 1px solid #efe2d3;
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -221,14 +168,14 @@ button.primary:hover {
 
 .chip {
   font-size: 0.7rem;
-  padding: 4px 8px;
-  border-radius: 999px;
-  background: #f5efe8;
-  border: 1px solid #e6d9cc;
 }
 
 @media (max-width: 860px) {
-  .hero {
+  .app-header {
+    grid-template-columns: 1fr;
+  }
+
+  .app-grid {
     grid-template-columns: 1fr;
   }
 }

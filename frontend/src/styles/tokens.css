@@ -1,0 +1,29 @@
+:root {
+  font-family: "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif;
+  color: #101316;
+  background: #0f1f1c;
+  --bg: #0f1f1c;
+  --bg-accent: #16302a;
+  --surface: #f6f1ea;
+  --surface-strong: #fff7ef;
+  --surface-border: #e7d9cb;
+  --text: #141414;
+  --text-muted: #6a6a6a;
+  --accent: #d86a3b;
+  --accent-strong: #ab4e26;
+  --success: #1f8f6a;
+  --warning: #e0a93b;
+  --danger: #c6372a;
+  --shadow-strong: 0 18px 40px rgba(9, 18, 16, 0.35);
+  --shadow-soft: 0 16px 30px rgba(9, 18, 16, 0.18);
+  --radius-xl: 24px;
+  --radius-lg: 20px;
+  --radius-md: 14px;
+  --radius-sm: 12px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+}
