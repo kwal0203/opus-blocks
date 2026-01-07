@@ -97,9 +97,7 @@ function App() {
   const [manuscriptId, setManuscriptId] = useState(
     localStorage.getItem(manuscriptIdKey) || ""
   );
-  const [paragraphSpec, setParagraphSpec] = useState(
-    JSON.stringify(defaultSpec, null, 2)
-  );
+  const [paragraphSpec, setParagraphSpec] = useState(defaultSpec);
   const [paragraphId, setParagraphId] = useState(
     localStorage.getItem(paragraphIdKey) || ""
   );
@@ -121,6 +119,12 @@ function App() {
 
   const isAuthenticated = Boolean(token);
   const sections = ["Introduction", "Methods", "Results", "Discussion"];
+  const intentOptions = {
+    Introduction: ["Background Context", "Prior Work Summary", "Knowledge Gap", "Study Objective"],
+    Methods: ["Study Design", "Participants / Data Sources", "Procedures / Protocol", "Analysis Methods"],
+    Results: ["Primary Results", "Secondary Results", "Null / Negative Results"],
+    Discussion: ["Result Interpretation", "Comparison to Prior Work", "Limitations", "Implications / Future Work"]
+  };
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -316,16 +320,9 @@ function App() {
       setError("Manuscript ID is required.");
       return;
     }
-    let spec;
-    try {
-      spec = JSON.parse(paragraphSpec);
-    } catch (err) {
-      setError("Paragraph spec must be valid JSON.");
-      return;
-    }
     updateStatus("Creating paragraph...");
     try {
-      const specWithFacts = { ...spec, allowed_fact_ids: selectedFactIds };
+      const specWithFacts = { ...paragraphSpec, allowed_fact_ids: selectedFactIds };
       const payload = await apiCreateParagraph({
         baseUrl,
         token,
@@ -350,23 +347,12 @@ function App() {
   }
 
   function setParagraphSpecForSection(section) {
-    try {
-      const spec = JSON.parse(paragraphSpec);
-      const intentDefaults = {
-        Introduction: "Background Context",
-        Methods: "Study Design",
-        Results: "Primary Results",
-        Discussion: "Result Interpretation"
-      };
-      const nextSpec = {
-        ...spec,
-        section,
-        intent: intentDefaults[section] || spec.intent
-      };
-      setParagraphSpec(JSON.stringify(nextSpec, null, 2));
-    } catch (err) {
-      setError("Paragraph spec must be valid JSON.");
-    }
+    const nextIntent = intentOptions[section]?.[0] || paragraphSpec.intent;
+    setParagraphSpec((prev) => ({
+      ...prev,
+      section,
+      intent: nextIntent
+    }));
   }
 
   async function generateParagraph() {
@@ -819,23 +805,6 @@ function App() {
               <Button onClick={createManuscript}>Create Manuscript</Button>
               <Button onClick={attachDocument}>Link Document</Button>
             </div>
-            <div className="section-grid">
-              {sections.map((section) => (
-                <Card key={section} className="section-card">
-                  <div>
-                    <h3>{section}</h3>
-                    <p className="muted">Add a paragraph scaffold for this section.</p>
-                  </div>
-                  <Button
-                    size="sm"
-                    variant="muted"
-                    onClick={() => setParagraphSpecForSection(section)}
-                  >
-                    Set Spec
-                  </Button>
-                </Card>
-              ))}
-            </div>
             <div className="actions">
               <Button onClick={createParagraph}>Create Paragraph</Button>
               <Button
@@ -845,6 +814,115 @@ function App() {
                 Generate
               </Button>
               <Button onClick={verifyParagraph}>Verify</Button>
+            </div>
+            <div className="builder-grid">
+              <div className="builder-card">
+                <h3>Section</h3>
+                <div className="chip-row">
+                  {sections.map((section) => (
+                    <Button
+                      key={section}
+                      size="sm"
+                      variant={paragraphSpec.section === section ? "primary" : "muted"}
+                      onClick={() => setParagraphSpecForSection(section)}
+                    >
+                      {section}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+              <div className="builder-card">
+                <h3>Intent</h3>
+                <div className="chip-row">
+                  {intentOptions[paragraphSpec.section]?.map((intent) => (
+                    <Button
+                      key={intent}
+                      size="sm"
+                      variant={paragraphSpec.intent === intent ? "primary" : "muted"}
+                      onClick={() =>
+                        setParagraphSpec((prev) => ({
+                          ...prev,
+                          intent
+                        }))
+                      }
+                    >
+                      {intent}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+              <div className="builder-card">
+                <h3>Structure</h3>
+                <div className="grid">
+                  <Input
+                    label="Evidence sentences"
+                    type="number"
+                    min="1"
+                    value={paragraphSpec.required_structure.evidence_sentences}
+                    onChange={(event) =>
+                      setParagraphSpec((prev) => ({
+                        ...prev,
+                        required_structure: {
+                          ...prev.required_structure,
+                          evidence_sentences: Number(event.target.value)
+                        }
+                      }))
+                    }
+                  />
+                  <Input
+                    label="Min words"
+                    type="number"
+                    min="1"
+                    value={paragraphSpec.style.target_length_words[0]}
+                    onChange={(event) =>
+                      setParagraphSpec((prev) => ({
+                        ...prev,
+                        style: {
+                          ...prev.style,
+                          target_length_words: [
+                            Number(event.target.value),
+                            prev.style.target_length_words[1]
+                          ]
+                        }
+                      }))
+                    }
+                  />
+                  <Input
+                    label="Max words"
+                    type="number"
+                    min="1"
+                    value={paragraphSpec.style.target_length_words[1]}
+                    onChange={(event) =>
+                      setParagraphSpec((prev) => ({
+                        ...prev,
+                        style: {
+                          ...prev.style,
+                          target_length_words: [
+                            prev.style.target_length_words[0],
+                            Number(event.target.value)
+                          ]
+                        }
+                      }))
+                    }
+                  />
+                </div>
+              </div>
+              <div className="builder-card">
+                <h3>Constraints</h3>
+                <Input
+                  label="Allowed scope"
+                  value={paragraphSpec.constraints.allowed_scope}
+                  onChange={(event) =>
+                    setParagraphSpec((prev) => ({
+                      ...prev,
+                      constraints: {
+                        ...prev.constraints,
+                        allowed_scope: event.target.value
+                      }
+                    }))
+                  }
+                />
+              </div>
             </div>
             <div className="selection-summary">
               <Badge variant="success">{selectedFactIds.length} facts selected</Badge>

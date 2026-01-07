@@ -251,6 +251,32 @@ body {
   flex-wrap: wrap;
 }
 
+.builder-grid {
+  margin-top: 16px;
+  display: grid;
+  gap: 16px;
+}
+
+.builder-card {
+  border-radius: var(--radius-md);
+  border: 1px solid var(--surface-border);
+  background: rgba(255, 255, 255, 0.85);
+  padding: 16px;
+  display: grid;
+  gap: 12px;
+}
+
+.builder-card h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .sentence {
   cursor: pointer;
   transition: transform 0.15s ease, box-shadow 0.15s ease;
