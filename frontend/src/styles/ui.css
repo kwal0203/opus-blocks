@@ -115,7 +115,7 @@
   padding: 16px;
   border-radius: var(--radius-md);
   border: 1px solid #efe2d3;
-  box-shadow: 0 6px 18px rgba(15, 17, 20, 0.08);
+  box-shadow: var(--shadow-card);
 }
 
 .ui-skeleton {
