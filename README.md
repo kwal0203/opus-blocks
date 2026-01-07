@@ -19,3 +19,13 @@ Infra ops
 
 Monitoring
 - metrics snapshot + alerts: `uv run python scripts/run_metrics_snapshot.py`
+
+Frontend (testing UI)
+- quick ops panel lives in `frontend/` (Vite + React)
+- run: `cd frontend && npm install && npm run dev`
+- Vite proxies `/api` to `http://localhost:8000` to avoid CORS during local testing
+
+Docker compose (all-in-one dev)
+- bring up everything: `docker compose up --build`
+- API: `http://localhost:8000`
+- Frontend: `http://localhost:5173`

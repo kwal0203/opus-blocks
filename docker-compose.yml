@@ -17,6 +17,59 @@ services:
     volumes:
       - redis_data:/data
 
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: postgresql+asyncpg://opus:opus@postgres:5432/opus_blocks
+      REDIS_URL: redis://redis:6379/0
+      JOBS_ENQUEUE_ENABLED: "true"
+    env_file:
+      - .env
+    volumes:
+      - .:/app
+      - storage_data:/app/storage
+    ports:
+      - "8000:8000"
+    depends_on:
+      - postgres
+      - redis
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: >
+      celery -A opus_blocks.tasks.celery_app.celery_app worker -l info
+      -I opus_blocks.tasks.documents,opus_blocks.tasks.paragraphs
+    environment:
+      DATABASE_URL: postgresql+asyncpg://opus:opus@postgres:5432/opus_blocks
+      REDIS_URL: redis://redis:6379/0
+      JOBS_ENQUEUE_ENABLED: "true"
+    env_file:
+      - .env
+    volumes:
+      - .:/app
+      - storage_data:/app/storage
+    depends_on:
+      - postgres
+      - redis
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    environment:
+      VITE_API_PROXY: http://api:8000
+    volumes:
+      - ./frontend:/app
+    ports:
+      - "5173:5173"
+    depends_on:
+      - api
+
 volumes:
   postgres_data:
   redis_data:
+  storage_data:
