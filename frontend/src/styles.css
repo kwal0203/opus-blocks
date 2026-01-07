@@ -225,6 +225,17 @@ body {
   word-break: break-word;
 }
 
+.run-list {
+  display: grid;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.run-card {
+  display: grid;
+  gap: 4px;
+}
+
 .panel h2 {
   margin-top: 0;
   font-size: 1.4rem;

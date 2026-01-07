@@ -12,6 +12,7 @@ import {
   extractDocumentFacts as apiExtractDocumentFacts,
   fetchDocumentFacts as apiFetchDocumentFacts,
   fetchJobStatus as apiFetchJobStatus,
+  fetchParagraphRuns as apiFetchParagraphRuns,
   fetchParagraphView as apiFetchParagraphView,
   generateParagraph as apiGenerateParagraph,
   linkDocumentToManuscript as apiLinkDocumentToManuscript,
@@ -25,6 +26,7 @@ import { API_BASE_URL } from "./config";
 /** @typedef {import("./api/types").Fact} Fact */
 /** @typedef {import("./api/types").ParagraphView} ParagraphView */
 /** @typedef {import("./api/types").Job} Job */
+/** @typedef {import("./api/types").Run} Run */
 
 const defaultSpec = {
   section: "Introduction",
@@ -81,6 +83,7 @@ function App() {
   const [paragraphView, setParagraphView] = useState(
     /** @type {ParagraphView | null} */ (null)
   );
+  const [paragraphRuns, setParagraphRuns] = useState(/** @type {Run[]} */ ([]));
   const [jobLookupId, setJobLookupId] = useState("");
   const [jobStatus, setJobStatus] = useState(/** @type {Job | null} */ (null));
   const [autoPollJobId, setAutoPollJobId] = useState("");
@@ -339,6 +342,19 @@ function App() {
     }
   }
 
+  async function fetchParagraphRuns(paragraphIdToLoad) {
+    try {
+      const payload = await apiFetchParagraphRuns({
+        baseUrl,
+        token,
+        paragraphId: paragraphIdToLoad
+      });
+      setParagraphRuns(payload);
+    } catch (err) {
+      handleError(err);
+    }
+  }
+
   async function fetchJobStatus() {
     if (!jobLookupId) {
       setError("Job ID is required.");
@@ -388,9 +404,21 @@ function App() {
     return () => clearInterval(interval);
   }, [autoPollJobId, baseUrl, token]);
 
+  useEffect(() => {
+    if (!paragraphView?.paragraph?.id) {
+      setParagraphRuns([]);
+      return;
+    }
+    fetchParagraphRuns(paragraphView.paragraph.id);
+  }, [paragraphView?.paragraph?.id, baseUrl, token]);
+
   const activeSentence = paragraphView?.sentences.find(
     (sentence) => sentence.id === activeSentenceId
   );
+  const paragraphJobStatus =
+    jobStatus && paragraphView && jobStatus.target_id === paragraphView.paragraph.id
+      ? jobStatus
+      : null;
 
   if (!isAuthenticated) {
     return (
@@ -756,6 +784,16 @@ function App() {
                   </p>
                 </div>
                 <div>
+                  <span className="inspector__label">Latest Job Status</span>
+                  {paragraphJobStatus ? (
+                    <p className="inspector__value">
+                      {paragraphJobStatus.job_type} · {paragraphJobStatus.status}
+                    </p>
+                  ) : (
+                    <p className="muted">Run a job to see status here.</p>
+                  )}
+                </div>
+                <div>
                   <span className="inspector__label">Active Sentence</span>
                   {activeSentence ? (
                     <>
@@ -770,6 +808,27 @@ function App() {
                     </>
                   ) : (
                     <p className="muted">Select a sentence to inspect.</p>
+                  )}
+                </div>
+                <div>
+                  <span className="inspector__label">Run History</span>
+                  {paragraphRuns.length ? (
+                    <div className="run-list">
+                      {paragraphRuns.map((run) => (
+                        <Card key={run.id} className="run-card">
+                          <strong>{run.run_type}</strong>
+                          <span className="muted">{run.model}</span>
+                          <span className="muted">
+                            {new Date(run.created_at).toLocaleString()}
+                          </span>
+                          {run.trace_id ? (
+                            <span className="muted">Trace: {run.trace_id}</span>
+                          ) : null}
+                        </Card>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="muted">No runs recorded yet.</p>
                   )}
                 </div>
               </div>

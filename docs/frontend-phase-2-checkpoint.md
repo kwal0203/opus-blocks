@@ -63,7 +63,7 @@ This checklist defines Phase 3 (core product flows) tasks to complete before mov
 ## 5) Inspector Panel
 
 - [x] Active block inspector with paragraph/sentence metadata.
-- [ ] Show run history and latest job status for the active paragraph.
+- [x] Show run history and latest job status for the active paragraph.
 
 ## 6) UX Polish (Phase 3-level)
 
