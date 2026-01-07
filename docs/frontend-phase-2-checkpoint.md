@@ -40,13 +40,13 @@ This checklist defines Phase 3 (core product flows) tasks to complete before mov
 
 ## 1) Auth Screens
 
-- [ ] Build dedicated login and registration panels (full-screen, branded).
-- [ ] Persist token to local storage and show user state in header.
+- [x] Build dedicated login and registration panels (full-screen, branded).
+- [x] Persist token to local storage and show user state in header.
 
 ## 2) Manuscript Canvas
 
-- [ ] Create manuscript creation flow and route to canvas view.
-- [ ] Render section blocks (Introduction/Methods/Results/Discussion) with paragraph slots.
+- [x] Create manuscript creation flow and route to canvas view.
+- [x] Render section blocks (Introduction/Methods/Results/Discussion) with paragraph slots.
 
 ## 3) Fact Library
 
