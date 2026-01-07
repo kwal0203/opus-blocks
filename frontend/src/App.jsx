@@ -592,6 +592,14 @@ function App() {
     jobStatus && paragraphView && jobStatus.target_id === paragraphView.paragraph.id
       ? jobStatus
       : null;
+  const paragraphStatus = paragraphView?.paragraph?.status || "UNKNOWN";
+  const isJobActive = Boolean(autoPollJobId);
+  const statusVariant =
+    paragraphStatus === "VERIFIED"
+      ? "success"
+      : paragraphStatus === "PENDING_VERIFY" || paragraphStatus === "GENERATING"
+        ? "warning"
+        : "danger";
 
   if (!isAuthenticated || route === "auth") {
     return (
@@ -920,13 +928,34 @@ function App() {
               <Button
                 onClick={generateParagraph}
                 variant={selectedFactIds.length ? "primary" : "muted"}
-                disabled={!canGenerate}
+                disabled={!canGenerate || isJobActive}
               >
                 Generate
               </Button>
-              <Button onClick={verifyParagraph} disabled={!canVerify}>
+              <Button onClick={verifyParagraph} disabled={!canVerify || isJobActive}>
                 Verify
               </Button>
+            </div>
+            <div className="actions">
+              <Badge variant={statusVariant}>
+                {paragraphStatus.replace("_", " ")}
+              </Badge>
+              {isJobActive ? <span className="muted">Job running…</span> : null}
+              {paragraphJobStatus?.status === "FAILED" ? (
+                <Button
+                  size="sm"
+                  variant="danger"
+                  onClick={() => {
+                    if (paragraphJobStatus.job_type === "GENERATE_PARAGRAPH") {
+                      generateParagraph();
+                    } else if (paragraphJobStatus.job_type === "VERIFY_PARAGRAPH") {
+                      verifyParagraph();
+                    }
+                  }}
+                >
+                  Retry last job
+                </Button>
+              ) : null}
             </div>
             <div className="builder-grid">
               <div className="builder-card">
