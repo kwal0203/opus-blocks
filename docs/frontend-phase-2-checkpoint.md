@@ -56,13 +56,13 @@ This checklist defines Phase 3 (core product flows) tasks to complete before mov
 
 ## 4) Paragraph Flow
 
-- [ ] Create paragraph spec builder UI (section, intent, structure, constraints).
-- [ ] Generate + verify controls with job polling status.
-- [ ] Render sentences with citations + failure modes.
+- [x] Create paragraph spec builder UI (section, intent, structure, constraints).
+- [x] Generate + verify controls with job polling status.
+- [x] Render sentences with citations + failure modes.
 
 ## 5) Inspector Panel
 
-- [ ] Active block inspector with paragraph/sentence metadata.
+- [x] Active block inspector with paragraph/sentence metadata.
 - [ ] Show run history and latest job status for the active paragraph.
 
 ## 6) UX Polish (Phase 3-level)

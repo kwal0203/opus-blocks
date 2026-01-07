@@ -1,10 +1,11 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import Badge from "./components/ui/Badge";
 import Button from "./components/ui/Button";
 import Card from "./components/ui/Card";
 import Input from "./components/ui/Input";
 import Textarea from "./components/ui/Textarea";
+import { isJobTerminal } from "./api/jobs";
 import {
   createManuscript as apiCreateManuscript,
   createParagraph as apiCreateParagraph,
@@ -82,6 +83,8 @@ function App() {
   );
   const [jobLookupId, setJobLookupId] = useState("");
   const [jobStatus, setJobStatus] = useState(/** @type {Job | null} */ (null));
+  const [autoPollJobId, setAutoPollJobId] = useState("");
+  const [activeSentenceId, setActiveSentenceId] = useState("");
 
   const tokenPreview = useMemo(() => {
     if (!token) return "Not set";
@@ -293,7 +296,10 @@ function App() {
     updateStatus("Generating paragraph...");
     try {
       const payload = await apiGenerateParagraph({ baseUrl, token, paragraphId });
-      setGenerateJobId(requireId(payload, "Generate paragraph"));
+      const jobId = requireId(payload, "Generate paragraph");
+      setGenerateJobId(jobId);
+      setJobLookupId(jobId);
+      setAutoPollJobId(jobId);
       updateStatus("Generate job queued.");
     } catch (err) {
       handleError(err);
@@ -308,7 +314,10 @@ function App() {
     updateStatus("Verifying paragraph...");
     try {
       const payload = await apiVerifyParagraph({ baseUrl, token, paragraphId });
-      setVerifyJobId(requireId(payload, "Verify paragraph"));
+      const jobId = requireId(payload, "Verify paragraph");
+      setVerifyJobId(jobId);
+      setJobLookupId(jobId);
+      setAutoPollJobId(jobId);
       updateStatus("Verify job queued.");
     } catch (err) {
       handleError(err);
@@ -339,11 +348,49 @@ function App() {
     try {
       const payload = await apiFetchJobStatus({ baseUrl, token, jobId: jobLookupId });
       setJobStatus(payload);
+      if (payload?.status && isJobTerminal(payload.status)) {
+        setAutoPollJobId("");
+      }
       updateStatus("Job status loaded.");
     } catch (err) {
       handleError(err);
     }
   }
+
+  async function pollJobStatus(jobId) {
+    try {
+      const payload = await apiFetchJobStatus({ baseUrl, token, jobId });
+      setJobStatus(payload);
+      if (payload?.status && isJobTerminal(payload.status)) {
+        setAutoPollJobId("");
+      }
+    } catch (err) {
+      handleError(err);
+      setAutoPollJobId("");
+    }
+  }
+
+  useEffect(() => {
+    if (!paragraphView?.sentences?.length) {
+      setActiveSentenceId("");
+      return;
+    }
+    if (!activeSentenceId) {
+      setActiveSentenceId(paragraphView.sentences[0].id);
+    }
+  }, [paragraphView, activeSentenceId]);
+
+  useEffect(() => {
+    if (!autoPollJobId) return undefined;
+    const interval = setInterval(() => {
+      pollJobStatus(autoPollJobId);
+    }, 2000);
+    return () => clearInterval(interval);
+  }, [autoPollJobId, baseUrl, token]);
+
+  const activeSentence = paragraphView?.sentences.find(
+    (sentence) => sentence.id === activeSentenceId
+  );
 
   if (!isAuthenticated) {
     return (
@@ -599,6 +646,12 @@ function App() {
               <Button onClick={generateParagraph}>Generate</Button>
               <Button onClick={verifyParagraph}>Verify</Button>
             </div>
+            <div className="selection-summary">
+              <Badge variant="success">{selectedFactIds.length} facts selected</Badge>
+              {selectedFactIds.length === 0 ? (
+                <span className="muted">Select facts from the Library to constrain generation.</span>
+              ) : null}
+            </div>
           </section>
 
           <section className="panel">
@@ -611,11 +664,28 @@ function App() {
                 <h3>Paragraph</h3>
                 <div className="sentences">
                   {paragraphView.sentences.map((sentence) => (
-                    <Card key={sentence.id} className="sentence">
+                    <Card
+                      key={sentence.id}
+                      className={
+                        sentence.id === activeSentenceId
+                          ? "sentence sentence--active"
+                          : "sentence"
+                      }
+                      onClick={() => setActiveSentenceId(sentence.id)}
+                    >
                       <p>{sentence.text}</p>
                       <small>
                         {sentence.supported ? "Verified" : "Needs review"} · {sentence.sentence_type}
                       </small>
+                      {!sentence.supported && sentence.verifier_failure_modes.length ? (
+                        <div className="failure-modes">
+                          {sentence.verifier_failure_modes.map((mode) => (
+                            <Badge key={mode} variant="danger">
+                              {mode}
+                            </Badge>
+                          ))}
+                        </div>
+                      ) : null}
                       <div className="citations">
                         {paragraphView.links
                           .filter((link) => link.sentence_id === sentence.id)
@@ -666,6 +736,46 @@ function App() {
                 {jobStatus.error ? <p className="error">{jobStatus.error}</p> : null}
               </Card>
             ) : null}
+          </section>
+          <section className="panel">
+            <h2>Inspector</h2>
+            {paragraphView ? (
+              <div className="inspector">
+                <div>
+                  <span className="inspector__label">Paragraph</span>
+                  <p className="inspector__value">{paragraphView.paragraph.id}</p>
+                  <p className="muted">
+                    {paragraphView.paragraph.section} · {paragraphView.paragraph.intent}
+                  </p>
+                  <p className="muted">Status: {paragraphView.paragraph.status}</p>
+                </div>
+                <div>
+                  <span className="inspector__label">Allowed Facts</span>
+                  <p className="inspector__value">
+                    {paragraphView.paragraph.allowed_fact_ids.length}
+                  </p>
+                </div>
+                <div>
+                  <span className="inspector__label">Active Sentence</span>
+                  {activeSentence ? (
+                    <>
+                      <p className="inspector__value">{activeSentence.text}</p>
+                      <p className="muted">
+                        {activeSentence.supported ? "Verified" : "Needs review"} ·{" "}
+                        {activeSentence.sentence_type}
+                      </p>
+                      {activeSentence.verifier_explanation ? (
+                        <p className="muted">{activeSentence.verifier_explanation}</p>
+                      ) : null}
+                    </>
+                  ) : (
+                    <p className="muted">Select a sentence to inspect.</p>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <p className="muted">Load a paragraph to inspect details.</p>
+            )}
           </section>
         </aside>
       </div>

@@ -180,6 +180,51 @@ body {
   box-shadow: 0 10px 24px rgba(216, 106, 59, 0.2);
 }
 
+.selection-summary {
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.sentence {
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.sentence--active {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 28px rgba(15, 17, 20, 0.18);
+  border-color: rgba(31, 143, 106, 0.4);
+}
+
+.failure-modes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.inspector {
+  display: grid;
+  gap: 16px;
+}
+
+.inspector__label {
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.inspector__value {
+  margin: 6px 0 0;
+  font-size: 0.95rem;
+  color: var(--text);
+  word-break: break-word;
+}
+
 .panel h2 {
   margin-top: 0;
   font-size: 1.4rem;
