@@ -200,6 +200,19 @@ body {
   flex-wrap: wrap;
 }
 
+.fact-card p {
+  margin: 0;
+  font-size: 0.92rem;
+  line-height: 1.4;
+}
+
+.fact-card mark {
+  background: rgba(219, 108, 45, 0.25);
+  color: inherit;
+  padding: 0 2px;
+  border-radius: 4px;
+}
+
 .fact-card--selected {
   border-color: rgba(216, 106, 59, 0.5);
   box-shadow: 0 10px 24px rgba(216, 106, 59, 0.24);
@@ -212,6 +225,11 @@ body {
   display: grid;
   gap: 6px;
   background: rgba(255, 255, 255, 0.72);
+}
+
+.compact-card {
+  padding: 12px;
+  font-size: 0.9rem;
 }
 
 .selection-summary {

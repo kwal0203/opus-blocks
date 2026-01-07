@@ -4,7 +4,6 @@ import Badge from "./components/ui/Badge";
 import Button from "./components/ui/Button";
 import Card from "./components/ui/Card";
 import Input from "./components/ui/Input";
-import Textarea from "./components/ui/Textarea";
 import Toast from "./components/ui/Toast";
 import { isJobTerminal } from "./api/jobs";
 import {
@@ -91,6 +90,7 @@ function App() {
   const [factSourceFilter, setFactSourceFilter] = useState("ALL");
   const [factUncertainFilter, setFactUncertainFilter] = useState("ALL");
   const [selectedFactIds, setSelectedFactIds] = useState([]);
+  const [factPageSize, setFactPageSize] = useState(5);
   const [manuscriptTitle, setManuscriptTitle] = useState(
     localStorage.getItem(manuscriptTitleKey) || "Test Manuscript"
   );
@@ -179,6 +179,10 @@ function App() {
       return true;
     });
   }, [facts, factSearch, factSourceFilter, factUncertainFilter]);
+
+  const pagedFacts = useMemo(() => {
+    return filteredFacts.slice(0, factPageSize);
+  }, [filteredFacts, factPageSize]);
 
   function updateStatus(message) {
     setStatus(message);
@@ -652,34 +656,6 @@ function App() {
       <div className="app-grid">
         <aside className="app-sidebar">
           <section className="panel" id="library-section">
-            <h2>Connection</h2>
-            <div className="grid">
-              <Input
-                label="Base URL"
-                value={baseUrl}
-                onChange={(event) => setBaseUrl(event.target.value)}
-              />
-              <Input
-                label="Email"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                placeholder="you@example.com"
-              />
-              <Input
-                label="Password"
-                type="password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                placeholder="Password123!"
-              />
-            </div>
-            <div className="actions">
-              <Button onClick={register}>Register</Button>
-              <Button variant="primary" onClick={login}>Login</Button>
-            </div>
-          </section>
-
-          <section className="panel" id="canvas-section">
             <h2>Documents + Facts</h2>
             <p className="muted">Upload a PDF, extract facts, then curate evidence.</p>
             <div className="grid">
@@ -758,7 +734,7 @@ function App() {
                   <p className="muted">Try clearing search or adjusting filters.</p>
                 </div>
               ) : (
-                filteredFacts.map((fact) => (
+                pagedFacts.map((fact) => (
                   <Card
                     key={fact.id}
                     className={selectedFactIds.includes(fact.id) ? "fact-card fact-card--selected" : "fact-card"}
@@ -774,17 +750,34 @@ function App() {
                         {selectedFactIds.includes(fact.id) ? "Selected" : "Select"}
                       </Button>
                     </div>
-                    <p>{fact.content}</p>
+                    <p>
+                      {factSearch
+                        ? fact.content.split(new RegExp(`(${factSearch})`, "gi")).map((part, index) => (
+                            part.toLowerCase() === factSearch.toLowerCase() ? (
+                              <mark key={`${fact.id}-match-${index}`}>{part}</mark>
+                            ) : (
+                              <span key={`${fact.id}-part-${index}`}>{part}</span>
+                            )
+                          ))
+                        : fact.content}
+                    </p>
                     <small>Fact ID: {fact.id}</small>
                   </Card>
                 ))
               )}
             </div>
+            {filteredFacts.length > factPageSize ? (
+              <div className="actions">
+                <Button variant="muted" onClick={() => setFactPageSize((size) => size + 5)}>
+                  Show more facts
+                </Button>
+              </div>
+            ) : null}
           </section>
         </aside>
 
         <main className="app-canvas">
-          <section className="panel">
+          <section className="panel" id="canvas-section">
             <h2>Manuscript Canvas</h2>
             <p className="muted">
               Create a manuscript, link documents, and scaffold paragraphs by section.
@@ -829,13 +822,6 @@ function App() {
                 </Card>
               ))}
             </div>
-            <Textarea
-              className="textarea"
-              label="Paragraph Spec (JSON)"
-              value={paragraphSpec}
-              onChange={(event) => setParagraphSpec(event.target.value)}
-              rows={12}
-            />
             <div className="actions">
               <Button onClick={createParagraph}>Create Paragraph</Button>
               <Button
@@ -914,7 +900,7 @@ function App() {
                 ) : (
                   <div className="facts">
                     {paragraphView.facts.map((fact) => (
-                      <Card key={fact.id}>
+                      <Card key={fact.id} className="compact-card">
                         <Badge>{fact.source_type}</Badge>
                         <p>{fact.content}</p>
                         <small>{fact.id}</small>
