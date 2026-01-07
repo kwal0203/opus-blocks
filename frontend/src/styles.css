@@ -47,6 +47,14 @@ body {
   gap: 8px;
 }
 
+.toast-anchor {
+  position: fixed;
+  top: 24px;
+  right: 24px;
+  z-index: 20;
+  max-width: 360px;
+}
+
 .app-shell {
   max-width: 1400px;
   margin: 0 auto;

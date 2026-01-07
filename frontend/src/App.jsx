@@ -5,6 +5,7 @@ import Button from "./components/ui/Button";
 import Card from "./components/ui/Card";
 import Input from "./components/ui/Input";
 import Textarea from "./components/ui/Textarea";
+import Toast from "./components/ui/Toast";
 import { isJobTerminal } from "./api/jobs";
 import {
   createManuscript as apiCreateManuscript,
@@ -77,6 +78,7 @@ function App() {
   const [route, setRoute] = useState(getRouteFromHash());
   const [status, setStatus] = useState("Idle");
   const [error, setError] = useState("");
+  const [toast, setToast] = useState(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [documentId, setDocumentId] = useState(
@@ -187,6 +189,7 @@ function App() {
     const message = err instanceof Error ? err.message : String(err);
     setError(message);
     setStatus("Error");
+    setToast({ variant: "danger", title: "Action failed", message });
   }
 
   async function register() {
@@ -194,6 +197,7 @@ function App() {
     try {
       await apiRegisterUser({ baseUrl, email, password });
       updateStatus("Registered.");
+      setToast({ variant: "success", title: "Registered", message: "Account created." });
     } catch (err) {
       handleError(err);
     }
@@ -207,6 +211,7 @@ function App() {
       setToken(newToken);
       localStorage.setItem(tokenKey, newToken);
       updateStatus("Logged in.");
+      setToast({ variant: "success", title: "Welcome back", message: "Login successful." });
     } catch (err) {
       handleError(err);
     }
@@ -222,6 +227,7 @@ function App() {
       const payload = await apiUploadDocument({ baseUrl, token, file: documentFile });
       setDocumentId(requireId(payload, "Upload"));
       updateStatus("Document uploaded.");
+      setToast({ variant: "success", title: "Upload complete", message: "Document stored." });
     } catch (err) {
       handleError(err);
     }
@@ -239,6 +245,11 @@ function App() {
       const payload = await apiExtractDocumentFacts({ baseUrl, token, documentId });
       setExtractJobId(requireId(payload, "Extract facts"));
       updateStatus("Extract job queued.");
+      setToast({
+        variant: "success",
+        title: "Extraction queued",
+        message: "Facts extraction has been enqueued."
+      });
     } catch (err) {
       handleError(err);
     }
@@ -254,6 +265,7 @@ function App() {
       const payload = await apiFetchDocumentFacts({ baseUrl, token, documentId });
       setFacts(payload);
       updateStatus("Facts loaded.");
+      setToast({ variant: "success", title: "Facts loaded", message: "Library refreshed." });
     } catch (err) {
       handleError(err);
     }
@@ -269,6 +281,7 @@ function App() {
       });
       setManuscriptId(requireId(payload, "Create manuscript"));
       updateStatus("Manuscript created.");
+      setToast({ variant: "success", title: "Manuscript ready", message: "Created successfully." });
     } catch (err) {
       handleError(err);
     }
@@ -288,6 +301,7 @@ function App() {
         documentId
       });
       updateStatus("Document linked.");
+      setToast({ variant: "success", title: "Linked", message: "Document attached to manuscript." });
     } catch (err) {
       handleError(err);
     }
@@ -316,6 +330,7 @@ function App() {
       });
       setParagraphId(requireId(payload, "Create paragraph"));
       updateStatus("Paragraph created.");
+      setToast({ variant: "success", title: "Paragraph created", message: "Ready to generate." });
     } catch (err) {
       handleError(err);
     }
@@ -363,6 +378,11 @@ function App() {
       setJobLookupId(jobId);
       setAutoPollJobId(jobId);
       updateStatus("Generate job queued.");
+      setToast({
+        variant: "success",
+        title: "Generate queued",
+        message: "Writing job started."
+      });
     } catch (err) {
       handleError(err);
     }
@@ -381,6 +401,11 @@ function App() {
       setJobLookupId(jobId);
       setAutoPollJobId(jobId);
       updateStatus("Verify job queued.");
+      setToast({
+        variant: "success",
+        title: "Verify queued",
+        message: "Verification job started."
+      });
     } catch (err) {
       handleError(err);
     }
@@ -399,6 +424,7 @@ function App() {
         setStatus("Paragraph has no sentences yet.");
       }
       updateStatus("Paragraph view loaded.");
+      setToast({ variant: "success", title: "Paragraph loaded", message: "View refreshed." });
     } catch (err) {
       handleError(err);
     }
@@ -428,6 +454,19 @@ function App() {
       setJobStatus(payload);
       if (payload?.status && isJobTerminal(payload.status)) {
         setAutoPollJobId("");
+        if (payload.status === "FAILED") {
+          setToast({
+            variant: "danger",
+            title: "Job failed",
+            message: payload.error || "Job failed without error detail."
+          });
+        } else {
+          setToast({
+            variant: "success",
+            title: "Job complete",
+            message: `${payload.job_type} finished.`
+          });
+        }
       }
       updateStatus("Job status loaded.");
     } catch (err) {
@@ -441,6 +480,19 @@ function App() {
       setJobStatus(payload);
       if (payload?.status && isJobTerminal(payload.status)) {
         setAutoPollJobId("");
+        if (payload.status === "FAILED") {
+          setToast({
+            variant: "danger",
+            title: "Job failed",
+            message: payload.error || "Job failed without error detail."
+          });
+        } else {
+          setToast({
+            variant: "success",
+            title: "Job complete",
+            message: `${payload.job_type} finished.`
+          });
+        }
       }
     } catch (err) {
       handleError(err);
@@ -530,6 +582,16 @@ function App() {
 
   return (
     <div className="app-shell">
+      {toast ? (
+        <div className="toast-anchor">
+          <Toast
+            variant={toast.variant}
+            title={toast.title}
+            message={toast.message}
+            onClose={() => setToast(null)}
+          />
+        </div>
+      ) : null}
       <header className="app-header">
         <div>
           <p className="eyebrow">OpusBlocks</p>
@@ -880,6 +942,21 @@ function App() {
             </div>
             <div className="actions">
               <Button onClick={fetchJobStatus}>Check Job Status</Button>
+              {jobStatus?.status === "FAILED" ? (
+                <Button
+                  variant="danger"
+                  size="sm"
+                  onClick={() => {
+                    if (jobStatus.job_type === "GENERATE_PARAGRAPH") {
+                      generateParagraph();
+                    } else if (jobStatus.job_type === "VERIFY_PARAGRAPH") {
+                      verifyParagraph();
+                    }
+                  }}
+                >
+                  Retry Job
+                </Button>
+              ) : null}
             </div>
             {jobStatus ? (
               <Card className="job">
