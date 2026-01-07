@@ -49,6 +49,20 @@ const defaultSpec = {
 };
 
 const tokenKey = "opusBlocksToken";
+const manuscriptIdKey = "opusBlocksManuscriptId";
+const manuscriptTitleKey = "opusBlocksManuscriptTitle";
+const documentIdKey = "opusBlocksDocumentId";
+const paragraphIdKey = "opusBlocksParagraphId";
+
+function setRouteHash(route) {
+  window.location.hash = route === "auth" ? "#/auth" : "#/canvas";
+}
+
+function getRouteFromHash() {
+  const hash = window.location.hash;
+  if (hash.includes("auth")) return "auth";
+  return "canvas";
+}
 
 function requireId(payload, label) {
   if (!payload || !payload.id) {
@@ -60,11 +74,14 @@ function requireId(payload, label) {
 function App() {
   const [baseUrl, setBaseUrl] = useState(API_BASE_URL);
   const [token, setToken] = useState(localStorage.getItem(tokenKey) || "");
+  const [route, setRoute] = useState(getRouteFromHash());
   const [status, setStatus] = useState("Idle");
   const [error, setError] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [documentId, setDocumentId] = useState("");
+  const [documentId, setDocumentId] = useState(
+    localStorage.getItem(documentIdKey) || ""
+  );
   const [documentFile, setDocumentFile] = useState(/** @type {File | null} */ (null));
   const [extractJobId, setExtractJobId] = useState("");
   const [facts, setFacts] = useState(/** @type {Fact[]} */ ([]));
@@ -72,12 +89,18 @@ function App() {
   const [factSourceFilter, setFactSourceFilter] = useState("ALL");
   const [factUncertainFilter, setFactUncertainFilter] = useState("ALL");
   const [selectedFactIds, setSelectedFactIds] = useState([]);
-  const [manuscriptTitle, setManuscriptTitle] = useState("Test Manuscript");
-  const [manuscriptId, setManuscriptId] = useState("");
+  const [manuscriptTitle, setManuscriptTitle] = useState(
+    localStorage.getItem(manuscriptTitleKey) || "Test Manuscript"
+  );
+  const [manuscriptId, setManuscriptId] = useState(
+    localStorage.getItem(manuscriptIdKey) || ""
+  );
   const [paragraphSpec, setParagraphSpec] = useState(
     JSON.stringify(defaultSpec, null, 2)
   );
-  const [paragraphId, setParagraphId] = useState("");
+  const [paragraphId, setParagraphId] = useState(
+    localStorage.getItem(paragraphIdKey) || ""
+  );
   const [generateJobId, setGenerateJobId] = useState("");
   const [verifyJobId, setVerifyJobId] = useState("");
   const [paragraphView, setParagraphView] = useState(
@@ -96,6 +119,40 @@ function App() {
 
   const isAuthenticated = Boolean(token);
   const sections = ["Introduction", "Methods", "Results", "Discussion"];
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      setRoute("canvas");
+      setRouteHash("canvas");
+    } else {
+      setRoute("auth");
+      setRouteHash("auth");
+    }
+  }, [isAuthenticated]);
+
+  useEffect(() => {
+    const handler = () => {
+      setRoute(getRouteFromHash());
+    };
+    window.addEventListener("hashchange", handler);
+    return () => window.removeEventListener("hashchange", handler);
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem(manuscriptTitleKey, manuscriptTitle);
+  }, [manuscriptTitle]);
+
+  useEffect(() => {
+    localStorage.setItem(manuscriptIdKey, manuscriptId);
+  }, [manuscriptId]);
+
+  useEffect(() => {
+    localStorage.setItem(documentIdKey, documentId);
+  }, [documentId]);
+
+  useEffect(() => {
+    localStorage.setItem(paragraphIdKey, paragraphId);
+  }, [paragraphId]);
 
   const filteredFacts = useMemo(() => {
     return facts.filter((fact) => {
@@ -425,7 +482,7 @@ function App() {
       ? jobStatus
       : null;
 
-  if (!isAuthenticated) {
+  if (!isAuthenticated || route === "auth") {
     return (
       <div className="auth-screen">
         <div className="auth-card">
@@ -458,7 +515,12 @@ function App() {
           </div>
           <div className="actions auth-actions">
             <Button onClick={register}>Register</Button>
-            <Button variant="primary" onClick={login}>Login</Button>
+            <Button
+              variant="primary"
+              onClick={login}
+            >
+              Login
+            </Button>
           </div>
           {error ? <p className="error">{error}</p> : null}
         </div>
@@ -485,11 +547,39 @@ function App() {
             <span>Token</span>
             <strong>{tokenPreview}</strong>
           </div>
-          <div className="actions">
-            <Button size="sm" variant="muted" onClick={() => {
-              setToken("");
-              localStorage.removeItem(tokenKey);
-            }}>
+          <div className="header-actions">
+            <nav className="header-nav">
+              <Button
+                size="sm"
+                variant="muted"
+                onClick={() => document.getElementById("library-section")?.scrollIntoView({ behavior: "smooth" })}
+              >
+                Library
+              </Button>
+              <Button
+                size="sm"
+                variant="muted"
+                onClick={() => document.getElementById("canvas-section")?.scrollIntoView({ behavior: "smooth" })}
+              >
+                Canvas
+              </Button>
+              <Button
+                size="sm"
+                variant="muted"
+                onClick={() => document.getElementById("inspector-section")?.scrollIntoView({ behavior: "smooth" })}
+              >
+                Inspector
+              </Button>
+            </nav>
+            <Button
+              size="sm"
+              variant="muted"
+              onClick={() => {
+                setToken("");
+                localStorage.removeItem(tokenKey);
+                setRouteHash("auth");
+              }}
+            >
               Sign out
             </Button>
           </div>
@@ -499,7 +589,7 @@ function App() {
 
       <div className="app-grid">
         <aside className="app-sidebar">
-          <section className="panel">
+          <section className="panel" id="library-section">
             <h2>Connection</h2>
             <div className="grid">
               <Input
@@ -527,7 +617,7 @@ function App() {
             </div>
           </section>
 
-          <section className="panel">
+          <section className="panel" id="canvas-section">
             <h2>Documents + Facts</h2>
             <p className="muted">Upload a PDF, extract facts, then curate evidence.</p>
             <div className="grid">
@@ -775,7 +865,7 @@ function App() {
           </section>
         </main>
 
-        <aside className="app-inspector">
+        <aside className="app-inspector" id="inspector-section">
           <section className="panel">
             <h2>Jobs</h2>
             <div className="grid">
