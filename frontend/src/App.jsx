@@ -19,7 +19,8 @@ import {
   loginUser as apiLoginUser,
   registerUser as apiRegisterUser,
   uploadDocument as apiUploadDocument,
-  verifyParagraph as apiVerifyParagraph
+  verifyParagraph as apiVerifyParagraph,
+  updateSentence as apiUpdateSentence
 } from "./api/ops";
 import { API_BASE_URL } from "./config";
 
@@ -71,6 +72,12 @@ function requireId(payload, label) {
   return payload.id;
 }
 
+function isValidUuid(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+    value
+  );
+}
+
 function App() {
   const [baseUrl, setBaseUrl] = useState(API_BASE_URL);
   const [token, setToken] = useState(localStorage.getItem(tokenKey) || "");
@@ -111,6 +118,8 @@ function App() {
   const [jobStatus, setJobStatus] = useState(/** @type {Job | null} */ (null));
   const [autoPollJobId, setAutoPollJobId] = useState("");
   const [activeSentenceId, setActiveSentenceId] = useState("");
+  const [editingSentenceId, setEditingSentenceId] = useState("");
+  const [editingSentenceText, setEditingSentenceText] = useState("");
 
   const tokenPreview = useMemo(() => {
     if (!token) return "Not set";
@@ -187,6 +196,55 @@ function App() {
   const pagedFacts = useMemo(() => {
     return filteredFacts.slice(0, factPageSize);
   }, [filteredFacts, factPageSize]);
+
+  const canUpload = Boolean(token);
+  const canExtract = Boolean(documentId);
+  const canCreateManuscript = Boolean(token);
+  const canLinkDocument = Boolean(manuscriptId && documentId);
+  const canSelectFacts = facts.length > 0;
+  const canCreateParagraph = Boolean(manuscriptId && selectedFactIds.length);
+  const canGenerate = Boolean(paragraphId);
+  const canVerify = Boolean(paragraphId);
+  const canViewParagraph = Boolean(paragraphId);
+
+  function beginEditSentence(sentence) {
+    setEditingSentenceId(sentence.id);
+    setEditingSentenceText(sentence.text);
+  }
+
+  function cancelEditSentence() {
+    setEditingSentenceId("");
+    setEditingSentenceText("");
+  }
+
+  async function saveSentenceEdit(sentenceId) {
+    if (!editingSentenceText.trim()) {
+      setError("Sentence text cannot be empty.");
+      return;
+    }
+    updateStatus("Saving sentence...");
+    try {
+      const payload = await apiUpdateSentence({
+        baseUrl,
+        token,
+        sentenceId,
+        text: editingSentenceText
+      });
+      const jobId = requireId(payload, "Update sentence");
+      setJobLookupId(jobId);
+      setAutoPollJobId(jobId);
+      setEditingSentenceId("");
+      setEditingSentenceText("");
+      setToast({
+        variant: "success",
+        title: "Sentence updated",
+        message: "Reverification started."
+      });
+      await fetchParagraphView(paragraphId);
+    } catch (err) {
+      handleError(err);
+    }
+  }
 
   function updateStatus(message) {
     setStatus(message);
@@ -329,9 +387,11 @@ function App() {
         manuscriptId,
         spec: specWithFacts
       });
-      setParagraphId(requireId(payload, "Create paragraph"));
+      const newParagraphId = requireId(payload, "Create paragraph");
+      setParagraphId(newParagraphId);
       updateStatus("Paragraph created.");
       setToast({ variant: "success", title: "Paragraph created", message: "Ready to generate." });
+      await fetchParagraphView(newParagraphId);
     } catch (err) {
       handleError(err);
     }
@@ -401,14 +461,23 @@ function App() {
     }
   }
 
-  async function fetchParagraphView() {
-    if (!paragraphId) {
+  async function fetchParagraphView(paragraphIdToLoad = paragraphId) {
+    const trimmedId = String(paragraphIdToLoad ?? "").trim();
+    if (!trimmedId) {
       setError("Paragraph ID is required.");
+      return;
+    }
+    if (!isValidUuid(trimmedId)) {
+      setError(`Paragraph ID must be a valid UUID (got "${trimmedId}").`);
       return;
     }
     updateStatus("Loading paragraph view...");
     try {
-      const payload = await apiFetchParagraphView({ baseUrl, token, paragraphId });
+      const payload = await apiFetchParagraphView({
+        baseUrl,
+        token,
+        paragraphId: trimmedId
+      });
       setParagraphView(payload);
       if (!payload?.sentences?.length) {
         setStatus("Paragraph has no sentences yet.");
@@ -650,6 +719,12 @@ function App() {
           <section className="panel" id="library-section">
             <h2>Documents + Facts</h2>
             <p className="muted">Upload a PDF, extract facts, then curate evidence.</p>
+            <ol className="step-list">
+              <li>Upload PDF</li>
+              <li>Extract Facts</li>
+              <li>Select Facts</li>
+              <li>Create Paragraph</li>
+            </ol>
             <div className="grid">
               <Input
                 label="Document ID"
@@ -674,9 +749,15 @@ function App() {
               />
             </div>
             <div className="actions">
-              <Button onClick={uploadDocument}>Upload</Button>
-              <Button onClick={extractFacts}>Extract Facts</Button>
-              <Button onClick={loadFacts}>Load Facts</Button>
+              <Button onClick={uploadDocument} disabled={!canUpload}>
+                Upload
+              </Button>
+              <Button onClick={extractFacts} disabled={!canExtract}>
+                Extract Facts
+              </Button>
+              <Button onClick={loadFacts} disabled={!canExtract}>
+                Load Facts
+              </Button>
             </div>
             <div className="fact-filters">
               <Input
@@ -782,6 +863,12 @@ function App() {
             <p className="muted">
               Create a manuscript, link documents, and scaffold paragraphs by section.
             </p>
+            <ol className="step-list">
+              <li>Create Manuscript</li>
+              <li>Link Document</li>
+              <li>Create Paragraph</li>
+              <li>Generate → Verify</li>
+            </ol>
             <div className="grid">
               <Input
                 label="Manuscript Title"
@@ -802,18 +889,44 @@ function App() {
               />
             </div>
             <div className="actions">
-              <Button onClick={createManuscript}>Create Manuscript</Button>
-              <Button onClick={attachDocument}>Link Document</Button>
+              <Button onClick={createManuscript} disabled={!canCreateManuscript}>
+                Create Manuscript
+              </Button>
+              <Button onClick={attachDocument} disabled={!canLinkDocument}>
+                Link Document
+              </Button>
+              <Button
+                variant="muted"
+                onClick={() => {
+                  setDocumentId("");
+                  setManuscriptId("");
+                  setParagraphId("");
+                  setSelectedFactIds([]);
+                  setFacts([]);
+                  setParagraphView(null);
+                  localStorage.removeItem(documentIdKey);
+                  localStorage.removeItem(manuscriptIdKey);
+                  localStorage.removeItem(paragraphIdKey);
+                  setToast({ variant: "success", title: "Reset", message: "IDs cleared." });
+                }}
+              >
+                Reset IDs
+              </Button>
             </div>
             <div className="actions">
-              <Button onClick={createParagraph}>Create Paragraph</Button>
+              <Button onClick={createParagraph} disabled={!canCreateParagraph}>
+                Create Paragraph
+              </Button>
               <Button
                 onClick={generateParagraph}
                 variant={selectedFactIds.length ? "primary" : "muted"}
+                disabled={!canGenerate}
               >
                 Generate
               </Button>
-              <Button onClick={verifyParagraph}>Verify</Button>
+              <Button onClick={verifyParagraph} disabled={!canVerify}>
+                Verify
+              </Button>
             </div>
             <div className="builder-grid">
               <div className="builder-card">
@@ -935,7 +1048,9 @@ function App() {
           <section className="panel">
             <h2>Paragraph View</h2>
             <div className="actions">
-              <Button onClick={fetchParagraphView}>Load Paragraph View</Button>
+              <Button onClick={() => fetchParagraphView()} disabled={!canViewParagraph}>
+                Load Paragraph View
+              </Button>
             </div>
             {paragraphView ? (
               <div className="view">
@@ -956,8 +1071,41 @@ function App() {
                             : "sentence"
                         }
                         onClick={() => setActiveSentenceId(sentence.id)}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            beginEditSentence(sentence);
+                          }
+                        }}
                       >
-                        <p>{sentence.text}</p>
+                        {editingSentenceId === sentence.id ? (
+                          <div className="sentence-edit">
+                            <textarea
+                              className="ui-textarea"
+                              rows={3}
+                              value={editingSentenceText}
+                              onChange={(event) => setEditingSentenceText(event.target.value)}
+                            />
+                            <div className="actions">
+                              <Button size="sm" variant="primary" onClick={() => saveSentenceEdit(sentence.id)}>
+                                Save
+                              </Button>
+                              <Button size="sm" variant="muted" onClick={cancelEditSentence}>
+                                Cancel
+                              </Button>
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            <p>{sentence.text}</p>
+                            <div className="sentence-actions">
+                              <Button size="sm" variant="muted" onClick={() => beginEditSentence(sentence)}>
+                                Edit
+                              </Button>
+                            </div>
+                          </>
+                        )}
                         <small>
                           {sentence.supported ? "Verified" : "Needs review"} · {sentence.sentence_type}
                         </small>

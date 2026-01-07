@@ -271,6 +271,19 @@ body {
   font-size: 1rem;
 }
 
+.step-list {
+  margin: 12px 0 0;
+  padding-left: 18px;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  display: grid;
+  gap: 4px;
+}
+
+.step-list li {
+  line-height: 1.4;
+}
+
 .chip-row {
   display: flex;
   flex-wrap: wrap;
@@ -293,6 +306,15 @@ body {
   flex-wrap: wrap;
   gap: 6px;
   margin-top: 8px;
+}
+
+.sentence-actions {
+  margin-top: 8px;
+}
+
+.sentence-edit {
+  display: grid;
+  gap: 8px;
 }
 
 .inspector {

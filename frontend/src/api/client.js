@@ -29,6 +29,19 @@ function resolveErrorPayload(payload) {
   if (typeof payload.detail === "string") {
     return payload.detail;
   }
+  if (Array.isArray(payload.detail)) {
+    const messages = payload.detail
+      .map((item) => {
+        if (!item) return null;
+        if (typeof item === "string") return item;
+        if (typeof item.msg === "string") return item.msg;
+        return null;
+      })
+      .filter(Boolean);
+    if (messages.length) {
+      return messages.join("; ");
+    }
+  }
   if (typeof payload.message === "string") {
     return payload.message;
   }
