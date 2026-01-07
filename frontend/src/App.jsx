@@ -65,6 +65,10 @@ function App() {
   const [documentFile, setDocumentFile] = useState(/** @type {File | null} */ (null));
   const [extractJobId, setExtractJobId] = useState("");
   const [facts, setFacts] = useState(/** @type {Fact[]} */ ([]));
+  const [factSearch, setFactSearch] = useState("");
+  const [factSourceFilter, setFactSourceFilter] = useState("ALL");
+  const [factUncertainFilter, setFactUncertainFilter] = useState("ALL");
+  const [selectedFactIds, setSelectedFactIds] = useState([]);
   const [manuscriptTitle, setManuscriptTitle] = useState("Test Manuscript");
   const [manuscriptId, setManuscriptId] = useState("");
   const [paragraphSpec, setParagraphSpec] = useState(
@@ -83,6 +87,33 @@ function App() {
     if (!token) return "Not set";
     return `${token.slice(0, 16)}...${token.slice(-8)}`;
   }, [token]);
+
+  const isAuthenticated = Boolean(token);
+  const sections = ["Introduction", "Methods", "Results", "Discussion"];
+
+  const filteredFacts = useMemo(() => {
+    return facts.filter((fact) => {
+      if (
+        factSourceFilter !== "ALL" &&
+        fact.source_type.toUpperCase() !== factSourceFilter
+      ) {
+        return false;
+      }
+      if (factUncertainFilter === "UNCERTAIN" && !fact.is_uncertain) {
+        return false;
+      }
+      if (factUncertainFilter === "CERTAIN" && fact.is_uncertain) {
+        return false;
+      }
+      if (factSearch) {
+        const term = factSearch.toLowerCase();
+        if (!fact.content.toLowerCase().includes(term)) {
+          return false;
+        }
+      }
+      return true;
+    });
+  }, [facts, factSearch, factSourceFilter, factUncertainFilter]);
 
   function updateStatus(message) {
     setStatus(message);
@@ -211,16 +242,46 @@ function App() {
     }
     updateStatus("Creating paragraph...");
     try {
+      const specWithFacts = { ...spec, allowed_fact_ids: selectedFactIds };
       const payload = await apiCreateParagraph({
         baseUrl,
         token,
         manuscriptId,
-        spec
+        spec: specWithFacts
       });
       setParagraphId(requireId(payload, "Create paragraph"));
       updateStatus("Paragraph created.");
     } catch (err) {
       handleError(err);
+    }
+  }
+
+  function toggleFactSelection(factId) {
+    setSelectedFactIds((prev) => {
+      if (prev.includes(factId)) {
+        return prev.filter((id) => id !== factId);
+      }
+      return [...prev, factId];
+    });
+  }
+
+  function setParagraphSpecForSection(section) {
+    try {
+      const spec = JSON.parse(paragraphSpec);
+      const intentDefaults = {
+        Introduction: "Background Context",
+        Methods: "Study Design",
+        Results: "Primary Results",
+        Discussion: "Result Interpretation"
+      };
+      const nextSpec = {
+        ...spec,
+        section,
+        intent: intentDefaults[section] || spec.intent
+      };
+      setParagraphSpec(JSON.stringify(nextSpec, null, 2));
+    } catch (err) {
+      setError("Paragraph spec must be valid JSON.");
     }
   }
 
@@ -284,6 +345,47 @@ function App() {
     }
   }
 
+  if (!isAuthenticated) {
+    return (
+      <div className="auth-screen">
+        <div className="auth-card">
+          <div className="auth-header">
+            <p className="eyebrow">OpusBlocks</p>
+            <h1>Welcome back</h1>
+            <p className="subtitle">
+              Sign in to run extraction, generation, and verification workflows.
+            </p>
+          </div>
+          <div className="grid">
+            <Input
+              label="API Base URL"
+              value={baseUrl}
+              onChange={(event) => setBaseUrl(event.target.value)}
+            />
+            <Input
+              label="Email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              placeholder="you@example.com"
+            />
+            <Input
+              label="Password"
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              placeholder="Password123!"
+            />
+          </div>
+          <div className="actions auth-actions">
+            <Button onClick={register}>Register</Button>
+            <Button variant="primary" onClick={login}>Login</Button>
+          </div>
+          {error ? <p className="error">{error}</p> : null}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="app-shell">
       <header className="app-header">
@@ -302,6 +404,14 @@ function App() {
           <div>
             <span>Token</span>
             <strong>{tokenPreview}</strong>
+          </div>
+          <div className="actions">
+            <Button size="sm" variant="muted" onClick={() => {
+              setToken("");
+              localStorage.removeItem(tokenKey);
+            }}>
+              Sign out
+            </Button>
           </div>
           {error ? <p className="error">{error}</p> : null}
         </div>
@@ -339,6 +449,7 @@ function App() {
 
           <section className="panel">
             <h2>Documents + Facts</h2>
+            <p className="muted">Upload a PDF, extract facts, then curate evidence.</p>
             <div className="grid">
               <Input
                 label="Document ID"
@@ -367,13 +478,60 @@ function App() {
               <Button onClick={extractFacts}>Extract Facts</Button>
               <Button onClick={loadFacts}>Load Facts</Button>
             </div>
+            <div className="fact-filters">
+              <Input
+                label="Search facts"
+                value={factSearch}
+                onChange={(event) => setFactSearch(event.target.value)}
+                placeholder="Search text..."
+              />
+              <div className="filter-row">
+                <label className="ui-field">
+                  <span className="ui-field__label">Source</span>
+                  <select
+                    className="ui-select"
+                    value={factSourceFilter}
+                    onChange={(event) => setFactSourceFilter(event.target.value)}
+                  >
+                    <option value="ALL">All</option>
+                    <option value="PDF">PDF</option>
+                    <option value="MANUAL">Manual</option>
+                  </select>
+                </label>
+                <label className="ui-field">
+                  <span className="ui-field__label">Uncertainty</span>
+                  <select
+                    className="ui-select"
+                    value={factUncertainFilter}
+                    onChange={(event) => setFactUncertainFilter(event.target.value)}
+                  >
+                    <option value="ALL">All</option>
+                    <option value="UNCERTAIN">Uncertain</option>
+                    <option value="CERTAIN">Certain</option>
+                  </select>
+                </label>
+              </div>
+            </div>
             <div className="list">
-              {facts.length === 0 ? (
+              {filteredFacts.length === 0 ? (
                 <p className="muted">No facts loaded yet.</p>
               ) : (
-                facts.map((fact) => (
-                  <Card key={fact.id}>
-                    <Badge>{fact.source_type}</Badge>
+                filteredFacts.map((fact) => (
+                  <Card
+                    key={fact.id}
+                    className={selectedFactIds.includes(fact.id) ? "fact-card fact-card--selected" : "fact-card"}
+                  >
+                    <div className="fact-card__header">
+                      <Badge>{fact.source_type}</Badge>
+                      {fact.is_uncertain ? <Badge variant="warning">Uncertain</Badge> : null}
+                      <Button
+                        size="sm"
+                        variant={selectedFactIds.includes(fact.id) ? "primary" : "muted"}
+                        onClick={() => toggleFactSelection(fact.id)}
+                      >
+                        {selectedFactIds.includes(fact.id) ? "Selected" : "Select"}
+                      </Button>
+                    </div>
                     <p>{fact.content}</p>
                     <small>Fact ID: {fact.id}</small>
                   </Card>
@@ -385,7 +543,10 @@ function App() {
 
         <main className="app-canvas">
           <section className="panel">
-            <h2>Manuscript + Paragraph</h2>
+            <h2>Manuscript Canvas</h2>
+            <p className="muted">
+              Create a manuscript, link documents, and scaffold paragraphs by section.
+            </p>
             <div className="grid">
               <Input
                 label="Manuscript Title"
@@ -408,6 +569,23 @@ function App() {
             <div className="actions">
               <Button onClick={createManuscript}>Create Manuscript</Button>
               <Button onClick={attachDocument}>Link Document</Button>
+            </div>
+            <div className="section-grid">
+              {sections.map((section) => (
+                <Card key={section} className="section-card">
+                  <div>
+                    <h3>{section}</h3>
+                    <p className="muted">Add a paragraph scaffold for this section.</p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="muted"
+                    onClick={() => setParagraphSpecForSection(section)}
+                  >
+                    Set Spec
+                  </Button>
+                </Card>
+              ))}
             </div>
             <Textarea
               className="textarea"
