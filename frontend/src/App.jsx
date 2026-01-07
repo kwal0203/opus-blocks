@@ -177,6 +177,8 @@ function App() {
     }
     updateStatus("Extracting facts...");
     try {
+      setFacts([]);
+      setSelectedFactIds([]);
       const payload = await apiExtractDocumentFacts({ baseUrl, token, documentId });
       setExtractJobId(requireId(payload, "Extract facts"));
       updateStatus("Extract job queued.");
@@ -336,6 +338,9 @@ function App() {
     try {
       const payload = await apiFetchParagraphView({ baseUrl, token, paragraphId });
       setParagraphView(payload);
+      if (!payload?.sentences?.length) {
+        setStatus("Paragraph has no sentences yet.");
+      }
       updateStatus("Paragraph view loaded.");
     } catch (err) {
       handleError(err);
@@ -588,8 +593,18 @@ function App() {
               </div>
             </div>
             <div className="list">
-              {filteredFacts.length === 0 ? (
-                <p className="muted">No facts loaded yet.</p>
+              {facts.length === 0 ? (
+                <div className="empty-card">
+                  <p className="muted">No facts yet.</p>
+                  <p className="muted">
+                    Upload a document and click Extract Facts to populate the library.
+                  </p>
+                </div>
+              ) : filteredFacts.length === 0 ? (
+                <div className="empty-card">
+                  <p className="muted">No facts match your filters.</p>
+                  <p className="muted">Try clearing search or adjusting filters.</p>
+                </div>
               ) : (
                 filteredFacts.map((fact) => (
                   <Card
@@ -671,7 +686,12 @@ function App() {
             />
             <div className="actions">
               <Button onClick={createParagraph}>Create Paragraph</Button>
-              <Button onClick={generateParagraph}>Generate</Button>
+              <Button
+                onClick={generateParagraph}
+                variant={selectedFactIds.length ? "primary" : "muted"}
+              >
+                Generate
+              </Button>
               <Button onClick={verifyParagraph}>Verify</Button>
             </div>
             <div className="selection-summary">
@@ -690,52 +710,66 @@ function App() {
             {paragraphView ? (
               <div className="view">
                 <h3>Paragraph</h3>
-                <div className="sentences">
-                  {paragraphView.sentences.map((sentence) => (
-                    <Card
-                      key={sentence.id}
-                      className={
-                        sentence.id === activeSentenceId
-                          ? "sentence sentence--active"
-                          : "sentence"
-                      }
-                      onClick={() => setActiveSentenceId(sentence.id)}
-                    >
-                      <p>{sentence.text}</p>
-                      <small>
-                        {sentence.supported ? "Verified" : "Needs review"} · {sentence.sentence_type}
-                      </small>
-                      {!sentence.supported && sentence.verifier_failure_modes.length ? (
-                        <div className="failure-modes">
-                          {sentence.verifier_failure_modes.map((mode) => (
-                            <Badge key={mode} variant="danger">
-                              {mode}
-                            </Badge>
-                          ))}
+                {paragraphView.sentences.length === 0 ? (
+                  <div className="empty-card">
+                    <p className="muted">No sentences yet.</p>
+                    <p className="muted">Run Generate or Verify to populate this paragraph.</p>
+                  </div>
+                ) : (
+                  <div className="sentences">
+                    {paragraphView.sentences.map((sentence) => (
+                      <Card
+                        key={sentence.id}
+                        className={
+                          sentence.id === activeSentenceId
+                            ? "sentence sentence--active"
+                            : "sentence"
+                        }
+                        onClick={() => setActiveSentenceId(sentence.id)}
+                      >
+                        <p>{sentence.text}</p>
+                        <small>
+                          {sentence.supported ? "Verified" : "Needs review"} · {sentence.sentence_type}
+                        </small>
+                        {!sentence.supported && sentence.verifier_failure_modes.length ? (
+                          <div className="failure-modes">
+                            {sentence.verifier_failure_modes.map((mode) => (
+                              <Badge key={mode} variant="danger">
+                                {mode}
+                              </Badge>
+                            ))}
+                          </div>
+                        ) : null}
+                        <div className="citations">
+                          {paragraphView.links
+                            .filter((link) => link.sentence_id === sentence.id)
+                            .map((link) => (
+                              <Badge key={link.id} className="chip">
+                                {link.fact_id}
+                              </Badge>
+                            ))}
                         </div>
-                      ) : null}
-                      <div className="citations">
-                        {paragraphView.links
-                          .filter((link) => link.sentence_id === sentence.id)
-                          .map((link) => (
-                            <Badge key={link.id} className="chip">
-                              {link.fact_id}
-                            </Badge>
-                          ))}
-                      </div>
-                    </Card>
-                  ))}
-                </div>
+                      </Card>
+                    ))}
+                  </div>
+                )}
                 <h3>Facts</h3>
-                <div className="facts">
-                  {paragraphView.facts.map((fact) => (
-                    <Card key={fact.id}>
-                      <Badge>{fact.source_type}</Badge>
-                      <p>{fact.content}</p>
-                      <small>{fact.id}</small>
-                    </Card>
-                  ))}
-                </div>
+                {paragraphView.facts.length === 0 ? (
+                  <div className="empty-card">
+                    <p className="muted">No facts attached to this manuscript.</p>
+                    <p className="muted">Link a document or add manual facts.</p>
+                  </div>
+                ) : (
+                  <div className="facts">
+                    {paragraphView.facts.map((fact) => (
+                      <Card key={fact.id}>
+                        <Badge>{fact.source_type}</Badge>
+                        <p>{fact.content}</p>
+                        <small>{fact.id}</small>
+                      </Card>
+                    ))}
+                  </div>
+                )}
               </div>
             ) : null}
           </section>

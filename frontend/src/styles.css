@@ -180,6 +180,15 @@ body {
   box-shadow: 0 10px 24px rgba(216, 106, 59, 0.2);
 }
 
+.empty-card {
+  border-radius: var(--radius-md);
+  border: 1px dashed var(--surface-border);
+  padding: 16px;
+  display: grid;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.7);
+}
+
 .selection-summary {
   margin-top: 12px;
   display: flex;

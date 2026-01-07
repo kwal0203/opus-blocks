@@ -67,5 +67,5 @@ This checklist defines Phase 3 (core product flows) tasks to complete before mov
 
 ## 6) UX Polish (Phase 3-level)
 
-- [ ] Empty states for no manuscripts, no facts, no sentences.
-- [ ] Inline error states for job failures and invalid actions.
+- [x] Empty states for no manuscripts, no facts, no sentences.
+- [x] Inline error states for job failures and invalid actions.
