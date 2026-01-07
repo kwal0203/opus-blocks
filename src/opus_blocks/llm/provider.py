@@ -6,6 +6,7 @@ from openai import OpenAI
 
 from opus_blocks.core.config import settings
 from opus_blocks.llm.prompts import loader
+from opus_blocks.llm.token_budget import assert_token_budget
 
 
 @dataclass(frozen=True)
@@ -158,7 +159,8 @@ class OpenAIProvider:
             latency_ms=latency_ms,
         )
 
-    def _request(self, *, system_prompt: str, user_prompt: str) -> LLMResult:
+    def _request(self, *, system_prompt: str, user_prompt: str, stage: str) -> LLMResult:
+        assert_token_budget(stage, system_prompt, user_prompt)
         start_time = time.perf_counter()
         response = self._client.chat.completions.create(
             model=self._model,
@@ -180,17 +182,19 @@ class OpenAIProvider:
     def extract_facts(self, *, inputs: dict) -> LLMResult:
         system_prompt = self._prompt_loader.render("librarian", inputs)
         user_prompt = "Return JSON only."
-        return self._request(system_prompt=system_prompt, user_prompt=user_prompt)
+        return self._request(
+            system_prompt=system_prompt, user_prompt=user_prompt, stage="librarian"
+        )
 
     def generate_paragraph(self, *, inputs: dict) -> LLMResult:
         system_prompt = self._prompt_loader.render("writer", inputs)
         user_prompt = "Return JSON only."
-        return self._request(system_prompt=system_prompt, user_prompt=user_prompt)
+        return self._request(system_prompt=system_prompt, user_prompt=user_prompt, stage="writer")
 
     def verify_paragraph(self, *, inputs: dict) -> LLMResult:
         system_prompt = self._prompt_loader.render("verifier", inputs)
         user_prompt = "Return JSON only."
-        return self._request(system_prompt=system_prompt, user_prompt=user_prompt)
+        return self._request(system_prompt=system_prompt, user_prompt=user_prompt, stage="verifier")
 
 
 def get_llm_provider() -> StubLLMProvider | OpenAIProvider:

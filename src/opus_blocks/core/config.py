@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     llm_model: str = "gpt-4o-mini"
     llm_prompt_version: str = "v1"
     llm_use_openai: bool = False
+    llm_token_budget_librarian: int = 6000
+    llm_token_budget_writer: int = 4000
+    llm_token_budget_verifier: int = 2000
 
     embeddings_provider: str = "stub"
     embeddings_model: str = "text-embedding-3-small"
@@ -41,6 +44,11 @@ class Settings(BaseSettings):
     alert_sentence_support_rate_min: float = 0.95
     alert_paragraph_verified_rate_min: float = 0.95
     alert_job_failure_rate_max: float = 0.05
+
+    circuit_breaker_enabled: bool = False
+    circuit_breaker_failure_threshold: int = 5
+    circuit_breaker_window_seconds: int = 300
+    circuit_breaker_cooldown_seconds: int = 300
 
 
 settings = Settings()
