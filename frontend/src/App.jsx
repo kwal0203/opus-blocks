@@ -1,16 +1,18 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import Badge from "./components/ui/Badge";
 import Button from "./components/ui/Button";
 import Card from "./components/ui/Card";
 import Input from "./components/ui/Input";
 import Textarea from "./components/ui/Textarea";
+import { isJobTerminal } from "./api/jobs";
 import {
   createManuscript as apiCreateManuscript,
   createParagraph as apiCreateParagraph,
   extractDocumentFacts as apiExtractDocumentFacts,
   fetchDocumentFacts as apiFetchDocumentFacts,
   fetchJobStatus as apiFetchJobStatus,
+  fetchParagraphRuns as apiFetchParagraphRuns,
   fetchParagraphView as apiFetchParagraphView,
   generateParagraph as apiGenerateParagraph,
   linkDocumentToManuscript as apiLinkDocumentToManuscript,
@@ -24,6 +26,7 @@ import { API_BASE_URL } from "./config";
 /** @typedef {import("./api/types").Fact} Fact */
 /** @typedef {import("./api/types").ParagraphView} ParagraphView */
 /** @typedef {import("./api/types").Job} Job */
+/** @typedef {import("./api/types").Run} Run */
 
 const defaultSpec = {
   section: "Introduction",
@@ -65,6 +68,10 @@ function App() {
   const [documentFile, setDocumentFile] = useState(/** @type {File | null} */ (null));
   const [extractJobId, setExtractJobId] = useState("");
   const [facts, setFacts] = useState(/** @type {Fact[]} */ ([]));
+  const [factSearch, setFactSearch] = useState("");
+  const [factSourceFilter, setFactSourceFilter] = useState("ALL");
+  const [factUncertainFilter, setFactUncertainFilter] = useState("ALL");
+  const [selectedFactIds, setSelectedFactIds] = useState([]);
   const [manuscriptTitle, setManuscriptTitle] = useState("Test Manuscript");
   const [manuscriptId, setManuscriptId] = useState("");
   const [paragraphSpec, setParagraphSpec] = useState(
@@ -76,13 +83,43 @@ function App() {
   const [paragraphView, setParagraphView] = useState(
     /** @type {ParagraphView | null} */ (null)
   );
+  const [paragraphRuns, setParagraphRuns] = useState(/** @type {Run[]} */ ([]));
   const [jobLookupId, setJobLookupId] = useState("");
   const [jobStatus, setJobStatus] = useState(/** @type {Job | null} */ (null));
+  const [autoPollJobId, setAutoPollJobId] = useState("");
+  const [activeSentenceId, setActiveSentenceId] = useState("");
 
   const tokenPreview = useMemo(() => {
     if (!token) return "Not set";
     return `${token.slice(0, 16)}...${token.slice(-8)}`;
   }, [token]);
+
+  const isAuthenticated = Boolean(token);
+  const sections = ["Introduction", "Methods", "Results", "Discussion"];
+
+  const filteredFacts = useMemo(() => {
+    return facts.filter((fact) => {
+      if (
+        factSourceFilter !== "ALL" &&
+        fact.source_type.toUpperCase() !== factSourceFilter
+      ) {
+        return false;
+      }
+      if (factUncertainFilter === "UNCERTAIN" && !fact.is_uncertain) {
+        return false;
+      }
+      if (factUncertainFilter === "CERTAIN" && fact.is_uncertain) {
+        return false;
+      }
+      if (factSearch) {
+        const term = factSearch.toLowerCase();
+        if (!fact.content.toLowerCase().includes(term)) {
+          return false;
+        }
+      }
+      return true;
+    });
+  }, [facts, factSearch, factSourceFilter, factUncertainFilter]);
 
   function updateStatus(message) {
     setStatus(message);
@@ -140,6 +177,8 @@ function App() {
     }
     updateStatus("Extracting facts...");
     try {
+      setFacts([]);
+      setSelectedFactIds([]);
       const payload = await apiExtractDocumentFacts({ baseUrl, token, documentId });
       setExtractJobId(requireId(payload, "Extract facts"));
       updateStatus("Extract job queued.");
@@ -211,16 +250,46 @@ function App() {
     }
     updateStatus("Creating paragraph...");
     try {
+      const specWithFacts = { ...spec, allowed_fact_ids: selectedFactIds };
       const payload = await apiCreateParagraph({
         baseUrl,
         token,
         manuscriptId,
-        spec
+        spec: specWithFacts
       });
       setParagraphId(requireId(payload, "Create paragraph"));
       updateStatus("Paragraph created.");
     } catch (err) {
       handleError(err);
+    }
+  }
+
+  function toggleFactSelection(factId) {
+    setSelectedFactIds((prev) => {
+      if (prev.includes(factId)) {
+        return prev.filter((id) => id !== factId);
+      }
+      return [...prev, factId];
+    });
+  }
+
+  function setParagraphSpecForSection(section) {
+    try {
+      const spec = JSON.parse(paragraphSpec);
+      const intentDefaults = {
+        Introduction: "Background Context",
+        Methods: "Study Design",
+        Results: "Primary Results",
+        Discussion: "Result Interpretation"
+      };
+      const nextSpec = {
+        ...spec,
+        section,
+        intent: intentDefaults[section] || spec.intent
+      };
+      setParagraphSpec(JSON.stringify(nextSpec, null, 2));
+    } catch (err) {
+      setError("Paragraph spec must be valid JSON.");
     }
   }
 
@@ -232,7 +301,10 @@ function App() {
     updateStatus("Generating paragraph...");
     try {
       const payload = await apiGenerateParagraph({ baseUrl, token, paragraphId });
-      setGenerateJobId(requireId(payload, "Generate paragraph"));
+      const jobId = requireId(payload, "Generate paragraph");
+      setGenerateJobId(jobId);
+      setJobLookupId(jobId);
+      setAutoPollJobId(jobId);
       updateStatus("Generate job queued.");
     } catch (err) {
       handleError(err);
@@ -247,7 +319,10 @@ function App() {
     updateStatus("Verifying paragraph...");
     try {
       const payload = await apiVerifyParagraph({ baseUrl, token, paragraphId });
-      setVerifyJobId(requireId(payload, "Verify paragraph"));
+      const jobId = requireId(payload, "Verify paragraph");
+      setVerifyJobId(jobId);
+      setJobLookupId(jobId);
+      setAutoPollJobId(jobId);
       updateStatus("Verify job queued.");
     } catch (err) {
       handleError(err);
@@ -263,7 +338,23 @@ function App() {
     try {
       const payload = await apiFetchParagraphView({ baseUrl, token, paragraphId });
       setParagraphView(payload);
+      if (!payload?.sentences?.length) {
+        setStatus("Paragraph has no sentences yet.");
+      }
       updateStatus("Paragraph view loaded.");
+    } catch (err) {
+      handleError(err);
+    }
+  }
+
+  async function fetchParagraphRuns(paragraphIdToLoad) {
+    try {
+      const payload = await apiFetchParagraphRuns({
+        baseUrl,
+        token,
+        paragraphId: paragraphIdToLoad
+      });
+      setParagraphRuns(payload);
     } catch (err) {
       handleError(err);
     }
@@ -278,10 +369,101 @@ function App() {
     try {
       const payload = await apiFetchJobStatus({ baseUrl, token, jobId: jobLookupId });
       setJobStatus(payload);
+      if (payload?.status && isJobTerminal(payload.status)) {
+        setAutoPollJobId("");
+      }
       updateStatus("Job status loaded.");
     } catch (err) {
       handleError(err);
     }
+  }
+
+  async function pollJobStatus(jobId) {
+    try {
+      const payload = await apiFetchJobStatus({ baseUrl, token, jobId });
+      setJobStatus(payload);
+      if (payload?.status && isJobTerminal(payload.status)) {
+        setAutoPollJobId("");
+      }
+    } catch (err) {
+      handleError(err);
+      setAutoPollJobId("");
+    }
+  }
+
+  useEffect(() => {
+    if (!paragraphView?.sentences?.length) {
+      setActiveSentenceId("");
+      return;
+    }
+    if (!activeSentenceId) {
+      setActiveSentenceId(paragraphView.sentences[0].id);
+    }
+  }, [paragraphView, activeSentenceId]);
+
+  useEffect(() => {
+    if (!autoPollJobId) return undefined;
+    const interval = setInterval(() => {
+      pollJobStatus(autoPollJobId);
+    }, 2000);
+    return () => clearInterval(interval);
+  }, [autoPollJobId, baseUrl, token]);
+
+  useEffect(() => {
+    if (!paragraphView?.paragraph?.id) {
+      setParagraphRuns([]);
+      return;
+    }
+    fetchParagraphRuns(paragraphView.paragraph.id);
+  }, [paragraphView?.paragraph?.id, baseUrl, token]);
+
+  const activeSentence = paragraphView?.sentences.find(
+    (sentence) => sentence.id === activeSentenceId
+  );
+  const paragraphJobStatus =
+    jobStatus && paragraphView && jobStatus.target_id === paragraphView.paragraph.id
+      ? jobStatus
+      : null;
+
+  if (!isAuthenticated) {
+    return (
+      <div className="auth-screen">
+        <div className="auth-card">
+          <div className="auth-header">
+            <p className="eyebrow">OpusBlocks</p>
+            <h1>Welcome back</h1>
+            <p className="subtitle">
+              Sign in to run extraction, generation, and verification workflows.
+            </p>
+          </div>
+          <div className="grid">
+            <Input
+              label="API Base URL"
+              value={baseUrl}
+              onChange={(event) => setBaseUrl(event.target.value)}
+            />
+            <Input
+              label="Email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              placeholder="you@example.com"
+            />
+            <Input
+              label="Password"
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              placeholder="Password123!"
+            />
+          </div>
+          <div className="actions auth-actions">
+            <Button onClick={register}>Register</Button>
+            <Button variant="primary" onClick={login}>Login</Button>
+          </div>
+          {error ? <p className="error">{error}</p> : null}
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -302,6 +484,14 @@ function App() {
           <div>
             <span>Token</span>
             <strong>{tokenPreview}</strong>
+          </div>
+          <div className="actions">
+            <Button size="sm" variant="muted" onClick={() => {
+              setToken("");
+              localStorage.removeItem(tokenKey);
+            }}>
+              Sign out
+            </Button>
           </div>
           {error ? <p className="error">{error}</p> : null}
         </div>
@@ -339,6 +529,7 @@ function App() {
 
           <section className="panel">
             <h2>Documents + Facts</h2>
+            <p className="muted">Upload a PDF, extract facts, then curate evidence.</p>
             <div className="grid">
               <Input
                 label="Document ID"
@@ -367,13 +558,70 @@ function App() {
               <Button onClick={extractFacts}>Extract Facts</Button>
               <Button onClick={loadFacts}>Load Facts</Button>
             </div>
+            <div className="fact-filters">
+              <Input
+                label="Search facts"
+                value={factSearch}
+                onChange={(event) => setFactSearch(event.target.value)}
+                placeholder="Search text..."
+              />
+              <div className="filter-row">
+                <label className="ui-field">
+                  <span className="ui-field__label">Source</span>
+                  <select
+                    className="ui-select"
+                    value={factSourceFilter}
+                    onChange={(event) => setFactSourceFilter(event.target.value)}
+                  >
+                    <option value="ALL">All</option>
+                    <option value="PDF">PDF</option>
+                    <option value="MANUAL">Manual</option>
+                  </select>
+                </label>
+                <label className="ui-field">
+                  <span className="ui-field__label">Uncertainty</span>
+                  <select
+                    className="ui-select"
+                    value={factUncertainFilter}
+                    onChange={(event) => setFactUncertainFilter(event.target.value)}
+                  >
+                    <option value="ALL">All</option>
+                    <option value="UNCERTAIN">Uncertain</option>
+                    <option value="CERTAIN">Certain</option>
+                  </select>
+                </label>
+              </div>
+            </div>
             <div className="list">
               {facts.length === 0 ? (
-                <p className="muted">No facts loaded yet.</p>
+                <div className="empty-card">
+                  <p className="muted">No facts yet.</p>
+                  <p className="muted">
+                    Upload a document and click Extract Facts to populate the library.
+                  </p>
+                </div>
+              ) : filteredFacts.length === 0 ? (
+                <div className="empty-card">
+                  <p className="muted">No facts match your filters.</p>
+                  <p className="muted">Try clearing search or adjusting filters.</p>
+                </div>
               ) : (
-                facts.map((fact) => (
-                  <Card key={fact.id}>
-                    <Badge>{fact.source_type}</Badge>
+                filteredFacts.map((fact) => (
+                  <Card
+                    key={fact.id}
+                    className={selectedFactIds.includes(fact.id) ? "fact-card fact-card--selected" : "fact-card"}
+                  >
+                    <div className="fact-card__header">
+                      <Badge>{fact.source_type}</Badge>
+                      {fact.is_uncertain ? <Badge variant="warning">Uncertain</Badge> : null}
+                      <Button
+                        size="sm"
+                        variant={selectedFactIds.includes(fact.id) ? "primary" : "muted"}
+                        onClick={() => toggleFactSelection(fact.id)}
+                      >
+                        {selectedFactIds.includes(fact.id) ? "Selected" : "Select"}
+                      </Button>
+                    </div>
                     <p>{fact.content}</p>
                     <small>Fact ID: {fact.id}</small>
                   </Card>
@@ -385,7 +633,10 @@ function App() {
 
         <main className="app-canvas">
           <section className="panel">
-            <h2>Manuscript + Paragraph</h2>
+            <h2>Manuscript Canvas</h2>
+            <p className="muted">
+              Create a manuscript, link documents, and scaffold paragraphs by section.
+            </p>
             <div className="grid">
               <Input
                 label="Manuscript Title"
@@ -409,6 +660,23 @@ function App() {
               <Button onClick={createManuscript}>Create Manuscript</Button>
               <Button onClick={attachDocument}>Link Document</Button>
             </div>
+            <div className="section-grid">
+              {sections.map((section) => (
+                <Card key={section} className="section-card">
+                  <div>
+                    <h3>{section}</h3>
+                    <p className="muted">Add a paragraph scaffold for this section.</p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="muted"
+                    onClick={() => setParagraphSpecForSection(section)}
+                  >
+                    Set Spec
+                  </Button>
+                </Card>
+              ))}
+            </div>
             <Textarea
               className="textarea"
               label="Paragraph Spec (JSON)"
@@ -418,8 +686,19 @@ function App() {
             />
             <div className="actions">
               <Button onClick={createParagraph}>Create Paragraph</Button>
-              <Button onClick={generateParagraph}>Generate</Button>
+              <Button
+                onClick={generateParagraph}
+                variant={selectedFactIds.length ? "primary" : "muted"}
+              >
+                Generate
+              </Button>
               <Button onClick={verifyParagraph}>Verify</Button>
+            </div>
+            <div className="selection-summary">
+              <Badge variant="success">{selectedFactIds.length} facts selected</Badge>
+              {selectedFactIds.length === 0 ? (
+                <span className="muted">Select facts from the Library to constrain generation.</span>
+              ) : null}
             </div>
           </section>
 
@@ -431,35 +710,66 @@ function App() {
             {paragraphView ? (
               <div className="view">
                 <h3>Paragraph</h3>
-                <div className="sentences">
-                  {paragraphView.sentences.map((sentence) => (
-                    <Card key={sentence.id} className="sentence">
-                      <p>{sentence.text}</p>
-                      <small>
-                        {sentence.supported ? "Verified" : "Needs review"} · {sentence.sentence_type}
-                      </small>
-                      <div className="citations">
-                        {paragraphView.links
-                          .filter((link) => link.sentence_id === sentence.id)
-                          .map((link) => (
-                            <Badge key={link.id} className="chip">
-                              {link.fact_id}
-                            </Badge>
-                          ))}
-                      </div>
-                    </Card>
-                  ))}
-                </div>
+                {paragraphView.sentences.length === 0 ? (
+                  <div className="empty-card">
+                    <p className="muted">No sentences yet.</p>
+                    <p className="muted">Run Generate or Verify to populate this paragraph.</p>
+                  </div>
+                ) : (
+                  <div className="sentences">
+                    {paragraphView.sentences.map((sentence) => (
+                      <Card
+                        key={sentence.id}
+                        className={
+                          sentence.id === activeSentenceId
+                            ? "sentence sentence--active"
+                            : "sentence"
+                        }
+                        onClick={() => setActiveSentenceId(sentence.id)}
+                      >
+                        <p>{sentence.text}</p>
+                        <small>
+                          {sentence.supported ? "Verified" : "Needs review"} · {sentence.sentence_type}
+                        </small>
+                        {!sentence.supported && sentence.verifier_failure_modes.length ? (
+                          <div className="failure-modes">
+                            {sentence.verifier_failure_modes.map((mode) => (
+                              <Badge key={mode} variant="danger">
+                                {mode}
+                              </Badge>
+                            ))}
+                          </div>
+                        ) : null}
+                        <div className="citations">
+                          {paragraphView.links
+                            .filter((link) => link.sentence_id === sentence.id)
+                            .map((link) => (
+                              <Badge key={link.id} className="chip">
+                                {link.fact_id}
+                              </Badge>
+                            ))}
+                        </div>
+                      </Card>
+                    ))}
+                  </div>
+                )}
                 <h3>Facts</h3>
-                <div className="facts">
-                  {paragraphView.facts.map((fact) => (
-                    <Card key={fact.id}>
-                      <Badge>{fact.source_type}</Badge>
-                      <p>{fact.content}</p>
-                      <small>{fact.id}</small>
-                    </Card>
-                  ))}
-                </div>
+                {paragraphView.facts.length === 0 ? (
+                  <div className="empty-card">
+                    <p className="muted">No facts attached to this manuscript.</p>
+                    <p className="muted">Link a document or add manual facts.</p>
+                  </div>
+                ) : (
+                  <div className="facts">
+                    {paragraphView.facts.map((fact) => (
+                      <Card key={fact.id}>
+                        <Badge>{fact.source_type}</Badge>
+                        <p>{fact.content}</p>
+                        <small>{fact.id}</small>
+                      </Card>
+                    ))}
+                  </div>
+                )}
               </div>
             ) : null}
           </section>
@@ -488,6 +798,77 @@ function App() {
                 {jobStatus.error ? <p className="error">{jobStatus.error}</p> : null}
               </Card>
             ) : null}
+          </section>
+          <section className="panel">
+            <h2>Inspector</h2>
+            {paragraphView ? (
+              <div className="inspector">
+                <div>
+                  <span className="inspector__label">Paragraph</span>
+                  <p className="inspector__value">{paragraphView.paragraph.id}</p>
+                  <p className="muted">
+                    {paragraphView.paragraph.section} · {paragraphView.paragraph.intent}
+                  </p>
+                  <p className="muted">Status: {paragraphView.paragraph.status}</p>
+                </div>
+                <div>
+                  <span className="inspector__label">Allowed Facts</span>
+                  <p className="inspector__value">
+                    {paragraphView.paragraph.allowed_fact_ids.length}
+                  </p>
+                </div>
+                <div>
+                  <span className="inspector__label">Latest Job Status</span>
+                  {paragraphJobStatus ? (
+                    <p className="inspector__value">
+                      {paragraphJobStatus.job_type} · {paragraphJobStatus.status}
+                    </p>
+                  ) : (
+                    <p className="muted">Run a job to see status here.</p>
+                  )}
+                </div>
+                <div>
+                  <span className="inspector__label">Active Sentence</span>
+                  {activeSentence ? (
+                    <>
+                      <p className="inspector__value">{activeSentence.text}</p>
+                      <p className="muted">
+                        {activeSentence.supported ? "Verified" : "Needs review"} ·{" "}
+                        {activeSentence.sentence_type}
+                      </p>
+                      {activeSentence.verifier_explanation ? (
+                        <p className="muted">{activeSentence.verifier_explanation}</p>
+                      ) : null}
+                    </>
+                  ) : (
+                    <p className="muted">Select a sentence to inspect.</p>
+                  )}
+                </div>
+                <div>
+                  <span className="inspector__label">Run History</span>
+                  {paragraphRuns.length ? (
+                    <div className="run-list">
+                      {paragraphRuns.map((run) => (
+                        <Card key={run.id} className="run-card">
+                          <strong>{run.run_type}</strong>
+                          <span className="muted">{run.model}</span>
+                          <span className="muted">
+                            {new Date(run.created_at).toLocaleString()}
+                          </span>
+                          {run.trace_id ? (
+                            <span className="muted">Trace: {run.trace_id}</span>
+                          ) : null}
+                        </Card>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="muted">No runs recorded yet.</p>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <p className="muted">Load a paragraph to inspect details.</p>
+            )}
           </section>
         </aside>
       </div>

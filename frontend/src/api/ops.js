@@ -90,6 +90,14 @@ export function fetchParagraphView({ baseUrl, token, paragraphId }) {
   });
 }
 
+export function fetchParagraphRuns({ baseUrl, token, paragraphId }) {
+  const params = new URLSearchParams({ paragraph_id: paragraphId });
+  return apiJson(`/runs?${params.toString()}`, {
+    baseUrl,
+    token
+  });
+}
+
 export function fetchJobStatus({ baseUrl, token, jobId }) {
   return apiJson(`/jobs/${jobId}`, {
     baseUrl,

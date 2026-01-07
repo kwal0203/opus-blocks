@@ -31,3 +31,41 @@ This checklist defines Phase 2 (design system + layout) tasks to complete before
 
 - [x] Quick manual review in desktop + mobile widths.
 - [x] Verify contrast and focus states meet accessibility minimums.
+
+---
+
+# Frontend Phase 3 Checkpoint Plan
+
+This checklist defines Phase 3 (core product flows) tasks to complete before moving to Phase 4.
+
+## 1) Auth Screens
+
+- [ ] Build dedicated login and registration panels (full-screen, branded).
+- [ ] Persist token to local storage and show user state in header.
+
+## 2) Manuscript Canvas
+
+- [ ] Create manuscript creation flow and route to canvas view.
+- [ ] Render section blocks (Introduction/Methods/Results/Discussion) with paragraph slots.
+
+## 3) Fact Library
+
+- [x] Implement document upload + extract flows as a guided panel.
+- [x] Render facts list with selection state for allowed facts.
+- [x] Add search/filter for facts (by source_type, uncertainty).
+
+## 4) Paragraph Flow
+
+- [x] Create paragraph spec builder UI (section, intent, structure, constraints).
+- [x] Generate + verify controls with job polling status.
+- [x] Render sentences with citations + failure modes.
+
+## 5) Inspector Panel
+
+- [x] Active block inspector with paragraph/sentence metadata.
+- [x] Show run history and latest job status for the active paragraph.
+
+## 6) UX Polish (Phase 3-level)
+
+- [x] Empty states for no manuscripts, no facts, no sentences.
+- [x] Inline error states for job failures and invalid actions.

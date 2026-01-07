@@ -10,6 +10,30 @@ body {
   background: radial-gradient(circle at top, var(--bg-accent), var(--bg) 45%, #0b1715);
 }
 
+.auth-screen {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 40px 20px;
+}
+
+.auth-card {
+  width: min(520px, 100%);
+  background: linear-gradient(120deg, rgba(255, 255, 255, 0.96), rgba(240, 228, 215, 0.94));
+  border-radius: var(--radius-xl);
+  padding: 32px;
+  box-shadow: var(--shadow-strong);
+  border: 1px solid var(--surface-border);
+}
+
+.auth-header {
+  margin-bottom: 24px;
+}
+
+.auth-actions {
+  justify-content: flex-end;
+}
+
 .app-shell {
   max-width: 1400px;
   margin: 0 auto;
@@ -106,6 +130,119 @@ body {
   display: flex;
   flex-direction: column;
   gap: 24px;
+}
+
+.section-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.section-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.section-card h3 {
+  margin: 0 0 6px;
+}
+
+.fact-filters {
+  margin-top: 16px;
+  display: grid;
+  gap: 12px;
+}
+
+.filter-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+.fact-card {
+  display: grid;
+  gap: 8px;
+}
+
+.fact-card__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+
+.fact-card--selected {
+  border-color: rgba(216, 106, 59, 0.5);
+  box-shadow: 0 10px 24px rgba(216, 106, 59, 0.2);
+}
+
+.empty-card {
+  border-radius: var(--radius-md);
+  border: 1px dashed var(--surface-border);
+  padding: 16px;
+  display: grid;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.selection-summary {
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.sentence {
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.sentence--active {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 28px rgba(15, 17, 20, 0.18);
+  border-color: rgba(31, 143, 106, 0.4);
+}
+
+.failure-modes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.inspector {
+  display: grid;
+  gap: 16px;
+}
+
+.inspector__label {
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.inspector__value {
+  margin: 6px 0 0;
+  font-size: 0.95rem;
+  color: var(--text);
+  word-break: break-word;
+}
+
+.run-list {
+  display: grid;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.run-card {
+  display: grid;
+  gap: 4px;
 }
 
 .panel h2 {
