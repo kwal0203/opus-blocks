@@ -4,7 +4,7 @@ import Badge from "./components/ui/Badge";
 import Button from "./components/ui/Button";
 import Card from "./components/ui/Card";
 import Input from "./components/ui/Input";
-import Textarea from "./components/ui/Textarea";
+import Toast from "./components/ui/Toast";
 import { isJobTerminal } from "./api/jobs";
 import {
   createManuscript as apiCreateManuscript,
@@ -49,6 +49,20 @@ const defaultSpec = {
 };
 
 const tokenKey = "opusBlocksToken";
+const manuscriptIdKey = "opusBlocksManuscriptId";
+const manuscriptTitleKey = "opusBlocksManuscriptTitle";
+const documentIdKey = "opusBlocksDocumentId";
+const paragraphIdKey = "opusBlocksParagraphId";
+
+function setRouteHash(route) {
+  window.location.hash = route === "auth" ? "#/auth" : "#/canvas";
+}
+
+function getRouteFromHash() {
+  const hash = window.location.hash;
+  if (hash.includes("auth")) return "auth";
+  return "canvas";
+}
 
 function requireId(payload, label) {
   if (!payload || !payload.id) {
@@ -60,11 +74,15 @@ function requireId(payload, label) {
 function App() {
   const [baseUrl, setBaseUrl] = useState(API_BASE_URL);
   const [token, setToken] = useState(localStorage.getItem(tokenKey) || "");
+  const [route, setRoute] = useState(getRouteFromHash());
   const [status, setStatus] = useState("Idle");
   const [error, setError] = useState("");
+  const [toast, setToast] = useState(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [documentId, setDocumentId] = useState("");
+  const [documentId, setDocumentId] = useState(
+    localStorage.getItem(documentIdKey) || ""
+  );
   const [documentFile, setDocumentFile] = useState(/** @type {File | null} */ (null));
   const [extractJobId, setExtractJobId] = useState("");
   const [facts, setFacts] = useState(/** @type {Fact[]} */ ([]));
@@ -72,12 +90,19 @@ function App() {
   const [factSourceFilter, setFactSourceFilter] = useState("ALL");
   const [factUncertainFilter, setFactUncertainFilter] = useState("ALL");
   const [selectedFactIds, setSelectedFactIds] = useState([]);
-  const [manuscriptTitle, setManuscriptTitle] = useState("Test Manuscript");
-  const [manuscriptId, setManuscriptId] = useState("");
+  const [factPageSize, setFactPageSize] = useState(5);
+  const [manuscriptTitle, setManuscriptTitle] = useState(
+    localStorage.getItem(manuscriptTitleKey) || "Test Manuscript"
+  );
+  const [manuscriptId, setManuscriptId] = useState(
+    localStorage.getItem(manuscriptIdKey) || ""
+  );
   const [paragraphSpec, setParagraphSpec] = useState(
     JSON.stringify(defaultSpec, null, 2)
   );
-  const [paragraphId, setParagraphId] = useState("");
+  const [paragraphId, setParagraphId] = useState(
+    localStorage.getItem(paragraphIdKey) || ""
+  );
   const [generateJobId, setGenerateJobId] = useState("");
   const [verifyJobId, setVerifyJobId] = useState("");
   const [paragraphView, setParagraphView] = useState(
@@ -96,6 +121,40 @@ function App() {
 
   const isAuthenticated = Boolean(token);
   const sections = ["Introduction", "Methods", "Results", "Discussion"];
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      setRoute("canvas");
+      setRouteHash("canvas");
+    } else {
+      setRoute("auth");
+      setRouteHash("auth");
+    }
+  }, [isAuthenticated]);
+
+  useEffect(() => {
+    const handler = () => {
+      setRoute(getRouteFromHash());
+    };
+    window.addEventListener("hashchange", handler);
+    return () => window.removeEventListener("hashchange", handler);
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem(manuscriptTitleKey, manuscriptTitle);
+  }, [manuscriptTitle]);
+
+  useEffect(() => {
+    localStorage.setItem(manuscriptIdKey, manuscriptId);
+  }, [manuscriptId]);
+
+  useEffect(() => {
+    localStorage.setItem(documentIdKey, documentId);
+  }, [documentId]);
+
+  useEffect(() => {
+    localStorage.setItem(paragraphIdKey, paragraphId);
+  }, [paragraphId]);
 
   const filteredFacts = useMemo(() => {
     return facts.filter((fact) => {
@@ -121,6 +180,10 @@ function App() {
     });
   }, [facts, factSearch, factSourceFilter, factUncertainFilter]);
 
+  const pagedFacts = useMemo(() => {
+    return filteredFacts.slice(0, factPageSize);
+  }, [filteredFacts, factPageSize]);
+
   function updateStatus(message) {
     setStatus(message);
     setError("");
@@ -130,6 +193,7 @@ function App() {
     const message = err instanceof Error ? err.message : String(err);
     setError(message);
     setStatus("Error");
+    setToast({ variant: "danger", title: "Action failed", message });
   }
 
   async function register() {
@@ -137,6 +201,7 @@ function App() {
     try {
       await apiRegisterUser({ baseUrl, email, password });
       updateStatus("Registered.");
+      setToast({ variant: "success", title: "Registered", message: "Account created." });
     } catch (err) {
       handleError(err);
     }
@@ -150,6 +215,7 @@ function App() {
       setToken(newToken);
       localStorage.setItem(tokenKey, newToken);
       updateStatus("Logged in.");
+      setToast({ variant: "success", title: "Welcome back", message: "Login successful." });
     } catch (err) {
       handleError(err);
     }
@@ -165,6 +231,7 @@ function App() {
       const payload = await apiUploadDocument({ baseUrl, token, file: documentFile });
       setDocumentId(requireId(payload, "Upload"));
       updateStatus("Document uploaded.");
+      setToast({ variant: "success", title: "Upload complete", message: "Document stored." });
     } catch (err) {
       handleError(err);
     }
@@ -182,6 +249,11 @@ function App() {
       const payload = await apiExtractDocumentFacts({ baseUrl, token, documentId });
       setExtractJobId(requireId(payload, "Extract facts"));
       updateStatus("Extract job queued.");
+      setToast({
+        variant: "success",
+        title: "Extraction queued",
+        message: "Facts extraction has been enqueued."
+      });
     } catch (err) {
       handleError(err);
     }
@@ -197,6 +269,7 @@ function App() {
       const payload = await apiFetchDocumentFacts({ baseUrl, token, documentId });
       setFacts(payload);
       updateStatus("Facts loaded.");
+      setToast({ variant: "success", title: "Facts loaded", message: "Library refreshed." });
     } catch (err) {
       handleError(err);
     }
@@ -212,6 +285,7 @@ function App() {
       });
       setManuscriptId(requireId(payload, "Create manuscript"));
       updateStatus("Manuscript created.");
+      setToast({ variant: "success", title: "Manuscript ready", message: "Created successfully." });
     } catch (err) {
       handleError(err);
     }
@@ -231,6 +305,7 @@ function App() {
         documentId
       });
       updateStatus("Document linked.");
+      setToast({ variant: "success", title: "Linked", message: "Document attached to manuscript." });
     } catch (err) {
       handleError(err);
     }
@@ -259,6 +334,7 @@ function App() {
       });
       setParagraphId(requireId(payload, "Create paragraph"));
       updateStatus("Paragraph created.");
+      setToast({ variant: "success", title: "Paragraph created", message: "Ready to generate." });
     } catch (err) {
       handleError(err);
     }
@@ -306,6 +382,11 @@ function App() {
       setJobLookupId(jobId);
       setAutoPollJobId(jobId);
       updateStatus("Generate job queued.");
+      setToast({
+        variant: "success",
+        title: "Generate queued",
+        message: "Writing job started."
+      });
     } catch (err) {
       handleError(err);
     }
@@ -324,6 +405,11 @@ function App() {
       setJobLookupId(jobId);
       setAutoPollJobId(jobId);
       updateStatus("Verify job queued.");
+      setToast({
+        variant: "success",
+        title: "Verify queued",
+        message: "Verification job started."
+      });
     } catch (err) {
       handleError(err);
     }
@@ -342,6 +428,7 @@ function App() {
         setStatus("Paragraph has no sentences yet.");
       }
       updateStatus("Paragraph view loaded.");
+      setToast({ variant: "success", title: "Paragraph loaded", message: "View refreshed." });
     } catch (err) {
       handleError(err);
     }
@@ -371,6 +458,19 @@ function App() {
       setJobStatus(payload);
       if (payload?.status && isJobTerminal(payload.status)) {
         setAutoPollJobId("");
+        if (payload.status === "FAILED") {
+          setToast({
+            variant: "danger",
+            title: "Job failed",
+            message: payload.error || "Job failed without error detail."
+          });
+        } else {
+          setToast({
+            variant: "success",
+            title: "Job complete",
+            message: `${payload.job_type} finished.`
+          });
+        }
       }
       updateStatus("Job status loaded.");
     } catch (err) {
@@ -384,6 +484,19 @@ function App() {
       setJobStatus(payload);
       if (payload?.status && isJobTerminal(payload.status)) {
         setAutoPollJobId("");
+        if (payload.status === "FAILED") {
+          setToast({
+            variant: "danger",
+            title: "Job failed",
+            message: payload.error || "Job failed without error detail."
+          });
+        } else {
+          setToast({
+            variant: "success",
+            title: "Job complete",
+            message: `${payload.job_type} finished.`
+          });
+        }
       }
     } catch (err) {
       handleError(err);
@@ -425,7 +538,7 @@ function App() {
       ? jobStatus
       : null;
 
-  if (!isAuthenticated) {
+  if (!isAuthenticated || route === "auth") {
     return (
       <div className="auth-screen">
         <div className="auth-card">
@@ -458,7 +571,12 @@ function App() {
           </div>
           <div className="actions auth-actions">
             <Button onClick={register}>Register</Button>
-            <Button variant="primary" onClick={login}>Login</Button>
+            <Button
+              variant="primary"
+              onClick={login}
+            >
+              Login
+            </Button>
           </div>
           {error ? <p className="error">{error}</p> : null}
         </div>
@@ -468,6 +586,22 @@ function App() {
 
   return (
     <div className="app-shell">
+      {toast ? (
+        <div className="toast-anchor">
+          <Toast
+            variant={toast.variant}
+            title={toast.title}
+            message={toast.message}
+            onClose={() => setToast(null)}
+          />
+        </div>
+      ) : null}
+      <div className="mobile-warning">
+        <p>
+          This experience is optimized for larger screens. For best results, use a desktop
+          view.
+        </p>
+      </div>
       <header className="app-header">
         <div>
           <p className="eyebrow">OpusBlocks</p>
@@ -485,11 +619,39 @@ function App() {
             <span>Token</span>
             <strong>{tokenPreview}</strong>
           </div>
-          <div className="actions">
-            <Button size="sm" variant="muted" onClick={() => {
-              setToken("");
-              localStorage.removeItem(tokenKey);
-            }}>
+          <div className="header-actions">
+            <nav className="header-nav">
+              <Button
+                size="sm"
+                variant="muted"
+                onClick={() => document.getElementById("library-section")?.scrollIntoView({ behavior: "smooth" })}
+              >
+                Library
+              </Button>
+              <Button
+                size="sm"
+                variant="muted"
+                onClick={() => document.getElementById("canvas-section")?.scrollIntoView({ behavior: "smooth" })}
+              >
+                Canvas
+              </Button>
+              <Button
+                size="sm"
+                variant="muted"
+                onClick={() => document.getElementById("inspector-section")?.scrollIntoView({ behavior: "smooth" })}
+              >
+                Inspector
+              </Button>
+            </nav>
+            <Button
+              size="sm"
+              variant="muted"
+              onClick={() => {
+                setToken("");
+                localStorage.removeItem(tokenKey);
+                setRouteHash("auth");
+              }}
+            >
               Sign out
             </Button>
           </div>
@@ -499,35 +661,7 @@ function App() {
 
       <div className="app-grid">
         <aside className="app-sidebar">
-          <section className="panel">
-            <h2>Connection</h2>
-            <div className="grid">
-              <Input
-                label="Base URL"
-                value={baseUrl}
-                onChange={(event) => setBaseUrl(event.target.value)}
-              />
-              <Input
-                label="Email"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                placeholder="you@example.com"
-              />
-              <Input
-                label="Password"
-                type="password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                placeholder="Password123!"
-              />
-            </div>
-            <div className="actions">
-              <Button onClick={register}>Register</Button>
-              <Button variant="primary" onClick={login}>Login</Button>
-            </div>
-          </section>
-
-          <section className="panel">
+          <section className="panel" id="library-section">
             <h2>Documents + Facts</h2>
             <p className="muted">Upload a PDF, extract facts, then curate evidence.</p>
             <div className="grid">
@@ -606,10 +740,18 @@ function App() {
                   <p className="muted">Try clearing search or adjusting filters.</p>
                 </div>
               ) : (
-                filteredFacts.map((fact) => (
+                pagedFacts.map((fact) => (
                   <Card
                     key={fact.id}
                     className={selectedFactIds.includes(fact.id) ? "fact-card fact-card--selected" : "fact-card"}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        toggleFactSelection(fact.id);
+                      }
+                    }}
                   >
                     <div className="fact-card__header">
                       <Badge>{fact.source_type}</Badge>
@@ -622,17 +764,34 @@ function App() {
                         {selectedFactIds.includes(fact.id) ? "Selected" : "Select"}
                       </Button>
                     </div>
-                    <p>{fact.content}</p>
+                    <p>
+                      {factSearch
+                        ? fact.content.split(new RegExp(`(${factSearch})`, "gi")).map((part, index) => (
+                            part.toLowerCase() === factSearch.toLowerCase() ? (
+                              <mark key={`${fact.id}-match-${index}`}>{part}</mark>
+                            ) : (
+                              <span key={`${fact.id}-part-${index}`}>{part}</span>
+                            )
+                          ))
+                        : fact.content}
+                    </p>
                     <small>Fact ID: {fact.id}</small>
                   </Card>
                 ))
               )}
             </div>
+            {filteredFacts.length > factPageSize ? (
+              <div className="actions">
+                <Button variant="muted" onClick={() => setFactPageSize((size) => size + 5)}>
+                  Show more facts
+                </Button>
+              </div>
+            ) : null}
           </section>
         </aside>
 
         <main className="app-canvas">
-          <section className="panel">
+          <section className="panel" id="canvas-section">
             <h2>Manuscript Canvas</h2>
             <p className="muted">
               Create a manuscript, link documents, and scaffold paragraphs by section.
@@ -677,13 +836,6 @@ function App() {
                 </Card>
               ))}
             </div>
-            <Textarea
-              className="textarea"
-              label="Paragraph Spec (JSON)"
-              value={paragraphSpec}
-              onChange={(event) => setParagraphSpec(event.target.value)}
-              rows={12}
-            />
             <div className="actions">
               <Button onClick={createParagraph}>Create Paragraph</Button>
               <Button
@@ -762,7 +914,7 @@ function App() {
                 ) : (
                   <div className="facts">
                     {paragraphView.facts.map((fact) => (
-                      <Card key={fact.id}>
+                      <Card key={fact.id} className="compact-card">
                         <Badge>{fact.source_type}</Badge>
                         <p>{fact.content}</p>
                         <small>{fact.id}</small>
@@ -775,7 +927,7 @@ function App() {
           </section>
         </main>
 
-        <aside className="app-inspector">
+        <aside className="app-inspector" id="inspector-section">
           <section className="panel">
             <h2>Jobs</h2>
             <div className="grid">
@@ -790,6 +942,21 @@ function App() {
             </div>
             <div className="actions">
               <Button onClick={fetchJobStatus}>Check Job Status</Button>
+              {jobStatus?.status === "FAILED" ? (
+                <Button
+                  variant="danger"
+                  size="sm"
+                  onClick={() => {
+                    if (jobStatus.job_type === "GENERATE_PARAGRAPH") {
+                      generateParagraph();
+                    } else if (jobStatus.job_type === "VERIFY_PARAGRAPH") {
+                      verifyParagraph();
+                    }
+                  }}
+                >
+                  Retry Job
+                </Button>
+              ) : null}
             </div>
             {jobStatus ? (
               <Card className="job">

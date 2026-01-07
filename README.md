@@ -26,6 +26,7 @@ Frontend (testing UI)
 - Vite proxies `/api` to `http://localhost:8000` to avoid CORS during local testing
 - optional: set `VITE_API_BASE_URL` to override the API prefix (defaults to `/api/v1`)
 - Base URL input defaults to `VITE_API_BASE_URL` when the app loads
+- if the UI is blank after resetting the database, run `docker compose exec api alembic upgrade head`
 
 Docker compose (all-in-one dev)
 - bring up everything: `docker compose up --build`
