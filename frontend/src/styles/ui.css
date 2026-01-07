@@ -51,6 +51,14 @@
   transition: transform 0.15s ease, background 0.15s ease;
 }
 
+.ui-button:focus-visible,
+.ui-input:focus-visible,
+.ui-select:focus-visible,
+.ui-textarea:focus-visible {
+  outline: 2px solid rgba(219, 108, 45, 0.7);
+  outline-offset: 2px;
+}
+
 .ui-button:hover {
   transform: translateY(-1px);
   background: #ead4be;

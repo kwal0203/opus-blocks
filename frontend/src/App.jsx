@@ -596,6 +596,12 @@ function App() {
           />
         </div>
       ) : null}
+      <div className="mobile-warning">
+        <p>
+          This experience is optimized for larger screens. For best results, use a desktop
+          view.
+        </p>
+      </div>
       <header className="app-header">
         <div>
           <p className="eyebrow">OpusBlocks</p>
@@ -738,6 +744,14 @@ function App() {
                   <Card
                     key={fact.id}
                     className={selectedFactIds.includes(fact.id) ? "fact-card fact-card--selected" : "fact-card"}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        toggleFactSelection(fact.id);
+                      }
+                    }}
                   >
                     <div className="fact-card__header">
                       <Badge>{fact.source_type}</Badge>
