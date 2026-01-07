@@ -24,6 +24,8 @@ Frontend (testing UI)
 - quick ops panel lives in `frontend/` (Vite + React)
 - run: `cd frontend && npm install && npm run dev`
 - Vite proxies `/api` to `http://localhost:8000` to avoid CORS during local testing
+- optional: set `VITE_API_BASE_URL` to override the API prefix (defaults to `/api/v1`)
+- Base URL input defaults to `VITE_API_BASE_URL` when the app loads
 
 Docker compose (all-in-one dev)
 - bring up everything: `docker compose up --build`

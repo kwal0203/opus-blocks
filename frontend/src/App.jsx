@@ -1,5 +1,25 @@
 import { useMemo, useState } from "react";
 
+import {
+  createManuscript as apiCreateManuscript,
+  createParagraph as apiCreateParagraph,
+  extractDocumentFacts as apiExtractDocumentFacts,
+  fetchDocumentFacts as apiFetchDocumentFacts,
+  fetchJobStatus as apiFetchJobStatus,
+  fetchParagraphView as apiFetchParagraphView,
+  generateParagraph as apiGenerateParagraph,
+  linkDocumentToManuscript as apiLinkDocumentToManuscript,
+  loginUser as apiLoginUser,
+  registerUser as apiRegisterUser,
+  uploadDocument as apiUploadDocument,
+  verifyParagraph as apiVerifyParagraph
+} from "./api/ops";
+import { API_BASE_URL } from "./config";
+
+/** @typedef {import("./api/types").Fact} Fact */
+/** @typedef {import("./api/types").ParagraphView} ParagraphView */
+/** @typedef {import("./api/types").Job} Job */
+
 const defaultSpec = {
   section: "Introduction",
   intent: "Background Context",
@@ -22,25 +42,24 @@ const defaultSpec = {
 
 const tokenKey = "opusBlocksToken";
 
-function buildHeaders(token) {
-  const headers = { "Content-Type": "application/json" };
-  if (token) {
-    headers.Authorization = `Bearer ${token}`;
+function requireId(payload, label) {
+  if (!payload || !payload.id) {
+    throw new Error(`${label} response missing id`);
   }
-  return headers;
+  return payload.id;
 }
 
 function App() {
-  const [baseUrl, setBaseUrl] = useState("/api/v1");
+  const [baseUrl, setBaseUrl] = useState(API_BASE_URL);
   const [token, setToken] = useState(localStorage.getItem(tokenKey) || "");
   const [status, setStatus] = useState("Idle");
   const [error, setError] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [documentId, setDocumentId] = useState("");
-  const [documentFile, setDocumentFile] = useState(null);
+  const [documentFile, setDocumentFile] = useState(/** @type {File | null} */ (null));
   const [extractJobId, setExtractJobId] = useState("");
-  const [facts, setFacts] = useState([]);
+  const [facts, setFacts] = useState(/** @type {Fact[]} */ ([]));
   const [manuscriptTitle, setManuscriptTitle] = useState("Test Manuscript");
   const [manuscriptId, setManuscriptId] = useState("");
   const [paragraphSpec, setParagraphSpec] = useState(
@@ -49,9 +68,11 @@ function App() {
   const [paragraphId, setParagraphId] = useState("");
   const [generateJobId, setGenerateJobId] = useState("");
   const [verifyJobId, setVerifyJobId] = useState("");
-  const [paragraphView, setParagraphView] = useState(null);
+  const [paragraphView, setParagraphView] = useState(
+    /** @type {ParagraphView | null} */ (null)
+  );
   const [jobLookupId, setJobLookupId] = useState("");
-  const [jobStatus, setJobStatus] = useState(null);
+  const [jobStatus, setJobStatus] = useState(/** @type {Job | null} */ (null));
 
   const tokenPreview = useMemo(() => {
     if (!token) return "Not set";
@@ -72,14 +93,7 @@ function App() {
   async function register() {
     updateStatus("Registering...");
     try {
-      const response = await fetch(`${baseUrl}/auth/register`, {
-        method: "POST",
-        headers: buildHeaders(),
-        body: JSON.stringify({ email, password })
-      });
-      if (!response.ok) {
-        throw new Error(`Register failed (${response.status})`);
-      }
+      await apiRegisterUser({ baseUrl, email, password });
       updateStatus("Registered.");
     } catch (err) {
       handleError(err);
@@ -89,15 +103,7 @@ function App() {
   async function login() {
     updateStatus("Logging in...");
     try {
-      const response = await fetch(`${baseUrl}/auth/login`, {
-        method: "POST",
-        headers: buildHeaders(),
-        body: JSON.stringify({ email, password })
-      });
-      if (!response.ok) {
-        throw new Error(`Login failed (${response.status})`);
-      }
-      const payload = await response.json();
+      const payload = await apiLoginUser({ baseUrl, email, password });
       const newToken = payload.access_token;
       setToken(newToken);
       localStorage.setItem(tokenKey, newToken);
@@ -114,18 +120,8 @@ function App() {
     }
     updateStatus("Uploading document...");
     try {
-      const formData = new FormData();
-      formData.append("file", documentFile);
-      const response = await fetch(`${baseUrl}/documents/upload`, {
-        method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-        body: formData
-      });
-      if (!response.ok) {
-        throw new Error(`Upload failed (${response.status})`);
-      }
-      const payload = await response.json();
-      setDocumentId(payload.id);
+      const payload = await apiUploadDocument({ baseUrl, token, file: documentFile });
+      setDocumentId(requireId(payload, "Upload"));
       updateStatus("Document uploaded.");
     } catch (err) {
       handleError(err);
@@ -139,15 +135,8 @@ function App() {
     }
     updateStatus("Extracting facts...");
     try {
-      const response = await fetch(`${baseUrl}/documents/${documentId}/extract_facts`, {
-        method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined
-      });
-      if (!response.ok) {
-        throw new Error(`Extract facts failed (${response.status})`);
-      }
-      const payload = await response.json();
-      setExtractJobId(payload.id);
+      const payload = await apiExtractDocumentFacts({ baseUrl, token, documentId });
+      setExtractJobId(requireId(payload, "Extract facts"));
       updateStatus("Extract job queued.");
     } catch (err) {
       handleError(err);
@@ -161,13 +150,7 @@ function App() {
     }
     updateStatus("Loading facts...");
     try {
-      const response = await fetch(`${baseUrl}/documents/${documentId}/facts`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined
-      });
-      if (!response.ok) {
-        throw new Error(`Facts fetch failed (${response.status})`);
-      }
-      const payload = await response.json();
+      const payload = await apiFetchDocumentFacts({ baseUrl, token, documentId });
       setFacts(payload);
       updateStatus("Facts loaded.");
     } catch (err) {
@@ -178,16 +161,12 @@ function App() {
   async function createManuscript() {
     updateStatus("Creating manuscript...");
     try {
-      const response = await fetch(`${baseUrl}/manuscripts`, {
-        method: "POST",
-        headers: buildHeaders(token),
-        body: JSON.stringify({ title: manuscriptTitle })
+      const payload = await apiCreateManuscript({
+        baseUrl,
+        token,
+        title: manuscriptTitle
       });
-      if (!response.ok) {
-        throw new Error(`Manuscript failed (${response.status})`);
-      }
-      const payload = await response.json();
-      setManuscriptId(payload.id);
+      setManuscriptId(requireId(payload, "Create manuscript"));
       updateStatus("Manuscript created.");
     } catch (err) {
       handleError(err);
@@ -201,16 +180,12 @@ function App() {
     }
     updateStatus("Linking document...");
     try {
-      const response = await fetch(
-        `${baseUrl}/manuscripts/${manuscriptId}/documents/${documentId}`,
-        {
-          method: "POST",
-          headers: token ? { Authorization: `Bearer ${token}` } : undefined
-        }
-      );
-      if (!response.ok) {
-        throw new Error(`Link failed (${response.status})`);
-      }
+      await apiLinkDocumentToManuscript({
+        baseUrl,
+        token,
+        manuscriptId,
+        documentId
+      });
       updateStatus("Document linked.");
     } catch (err) {
       handleError(err);
@@ -231,16 +206,13 @@ function App() {
     }
     updateStatus("Creating paragraph...");
     try {
-      const response = await fetch(`${baseUrl}/paragraphs`, {
-        method: "POST",
-        headers: buildHeaders(token),
-        body: JSON.stringify({ manuscript_id: manuscriptId, spec })
+      const payload = await apiCreateParagraph({
+        baseUrl,
+        token,
+        manuscriptId,
+        spec
       });
-      if (!response.ok) {
-        throw new Error(`Paragraph failed (${response.status})`);
-      }
-      const payload = await response.json();
-      setParagraphId(payload.id);
+      setParagraphId(requireId(payload, "Create paragraph"));
       updateStatus("Paragraph created.");
     } catch (err) {
       handleError(err);
@@ -254,15 +226,8 @@ function App() {
     }
     updateStatus("Generating paragraph...");
     try {
-      const response = await fetch(`${baseUrl}/paragraphs/${paragraphId}/generate`, {
-        method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined
-      });
-      if (!response.ok) {
-        throw new Error(`Generate failed (${response.status})`);
-      }
-      const payload = await response.json();
-      setGenerateJobId(payload.id);
+      const payload = await apiGenerateParagraph({ baseUrl, token, paragraphId });
+      setGenerateJobId(requireId(payload, "Generate paragraph"));
       updateStatus("Generate job queued.");
     } catch (err) {
       handleError(err);
@@ -276,15 +241,8 @@ function App() {
     }
     updateStatus("Verifying paragraph...");
     try {
-      const response = await fetch(`${baseUrl}/paragraphs/${paragraphId}/verify`, {
-        method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined
-      });
-      if (!response.ok) {
-        throw new Error(`Verify failed (${response.status})`);
-      }
-      const payload = await response.json();
-      setVerifyJobId(payload.id);
+      const payload = await apiVerifyParagraph({ baseUrl, token, paragraphId });
+      setVerifyJobId(requireId(payload, "Verify paragraph"));
       updateStatus("Verify job queued.");
     } catch (err) {
       handleError(err);
@@ -298,13 +256,7 @@ function App() {
     }
     updateStatus("Loading paragraph view...");
     try {
-      const response = await fetch(`${baseUrl}/paragraphs/${paragraphId}/view`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined
-      });
-      if (!response.ok) {
-        throw new Error(`View failed (${response.status})`);
-      }
-      const payload = await response.json();
+      const payload = await apiFetchParagraphView({ baseUrl, token, paragraphId });
       setParagraphView(payload);
       updateStatus("Paragraph view loaded.");
     } catch (err) {
@@ -319,13 +271,7 @@ function App() {
     }
     updateStatus("Fetching job status...");
     try {
-      const response = await fetch(`${baseUrl}/jobs/${jobLookupId}`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined
-      });
-      if (!response.ok) {
-        throw new Error(`Job lookup failed (${response.status})`);
-      }
-      const payload = await response.json();
+      const payload = await apiFetchJobStatus({ baseUrl, token, jobId: jobLookupId });
       setJobStatus(payload);
       updateStatus("Job status loaded.");
     } catch (err) {

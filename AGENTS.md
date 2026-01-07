@@ -13,5 +13,6 @@
 - Use git for version control.
 - Use the GitHub gh CLI for creating pull requests.
 - Always add a brief PR summary when creating PRs.
+- PR summaries must be written in proper markdown (headings + bullet lists).
 - Do all work on a new branch; never work directly on main.
 - Keep local changes minimal and incremental.
