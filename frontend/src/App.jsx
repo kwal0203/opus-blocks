@@ -1,5 +1,10 @@
 import { useMemo, useState } from "react";
 
+import Badge from "./components/ui/Badge";
+import Button from "./components/ui/Button";
+import Card from "./components/ui/Card";
+import Input from "./components/ui/Input";
+import Textarea from "./components/ui/Textarea";
 import {
   createManuscript as apiCreateManuscript,
   createParagraph as apiCreateParagraph,
@@ -280,14 +285,13 @@ function App() {
   }
 
   return (
-    <div className="app">
-      <header className="hero">
+    <div className="app-shell">
+      <header className="app-header">
         <div>
           <p className="eyebrow">OpusBlocks</p>
-          <h1>Ops Panel for Backend Testing</h1>
+          <h1>Ops Console</h1>
           <p className="subtitle">
-            Drive the full extraction → generation → verification flow without a full
-            product UI.
+            Run the extraction → generation → verification loop from one canvas.
           </p>
         </div>
         <div className="status-card">
@@ -303,200 +307,190 @@ function App() {
         </div>
       </header>
 
-      <section className="panel">
-        <h2>1. Connection</h2>
-        <div className="grid">
-          <label>
-            Base URL
-            <input
-              value={baseUrl}
-              onChange={(event) => setBaseUrl(event.target.value)}
-            />
-          </label>
-          <label>
-            Email
-            <input
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              placeholder="you@example.com"
-            />
-          </label>
-          <label>
-            Password
-            <input
-              type="password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              placeholder="Password123!"
-            />
-          </label>
-        </div>
-        <div className="actions">
-          <button onClick={register}>Register</button>
-          <button className="primary" onClick={login}>Login</button>
-        </div>
-      </section>
-
-      <section className="panel">
-        <h2>2. Documents + Facts</h2>
-        <div className="grid">
-          <label>
-            Document ID
-            <input
-              value={documentId}
-              onChange={(event) => setDocumentId(event.target.value)}
-              placeholder="UUID"
-            />
-          </label>
-          <label>
-            Upload PDF
-            <input
-              type="file"
-              accept="application/pdf"
-              onChange={(event) => setDocumentFile(event.target.files?.[0] || null)}
-            />
-          </label>
-          <label>
-            Extract Job ID
-            <input
-              value={extractJobId}
-              onChange={(event) => setExtractJobId(event.target.value)}
-              placeholder="UUID"
-            />
-          </label>
-        </div>
-        <div className="actions">
-          <button onClick={uploadDocument}>Upload</button>
-          <button onClick={extractFacts}>Extract Facts</button>
-          <button onClick={loadFacts}>Load Facts</button>
-        </div>
-        <div className="list">
-          {facts.length === 0 ? (
-            <p className="muted">No facts loaded yet.</p>
-          ) : (
-            facts.map((fact) => (
-              <article key={fact.id}>
-                <div className="pill">{fact.source_type}</div>
-                <p>{fact.content}</p>
-                <small>Fact ID: {fact.id}</small>
-              </article>
-            ))
-          )}
-        </div>
-      </section>
-
-      <section className="panel">
-        <h2>3. Manuscript + Paragraph</h2>
-        <div className="grid">
-          <label>
-            Manuscript Title
-            <input
-              value={manuscriptTitle}
-              onChange={(event) => setManuscriptTitle(event.target.value)}
-            />
-          </label>
-          <label>
-            Manuscript ID
-            <input
-              value={manuscriptId}
-              onChange={(event) => setManuscriptId(event.target.value)}
-              placeholder="UUID"
-            />
-          </label>
-          <label>
-            Paragraph ID
-            <input
-              value={paragraphId}
-              onChange={(event) => setParagraphId(event.target.value)}
-              placeholder="UUID"
-            />
-          </label>
-        </div>
-        <div className="actions">
-          <button onClick={createManuscript}>Create Manuscript</button>
-          <button onClick={attachDocument}>Link Document</button>
-        </div>
-        <label className="textarea">
-          Paragraph Spec (JSON)
-          <textarea
-            value={paragraphSpec}
-            onChange={(event) => setParagraphSpec(event.target.value)}
-            rows={12}
-          />
-        </label>
-        <div className="actions">
-          <button onClick={createParagraph}>Create Paragraph</button>
-          <button onClick={generateParagraph}>Generate</button>
-          <button onClick={verifyParagraph}>Verify</button>
-        </div>
-      </section>
-
-      <section className="panel">
-        <h2>4. Jobs + Paragraph View</h2>
-        <div className="grid">
-          <label>
-            Job ID Lookup
-            <input
-              value={jobLookupId}
-              onChange={(event) => setJobLookupId(event.target.value)}
-              placeholder="UUID"
-            />
-          </label>
-          <label>
-            Generate Job ID
-            <input value={generateJobId} readOnly />
-          </label>
-          <label>
-            Verify Job ID
-            <input value={verifyJobId} readOnly />
-          </label>
-        </div>
-        <div className="actions">
-          <button onClick={fetchJobStatus}>Check Job Status</button>
-          <button onClick={fetchParagraphView}>Load Paragraph View</button>
-        </div>
-        {jobStatus ? (
-          <div className="job">
-            <strong>{jobStatus.job_type}</strong>
-            <span>Status: {jobStatus.status}</span>
-            {jobStatus.error ? <p className="error">{jobStatus.error}</p> : null}
-          </div>
-        ) : null}
-        {paragraphView ? (
-          <div className="view">
-            <h3>Paragraph</h3>
-            <div className="sentences">
-              {paragraphView.sentences.map((sentence) => (
-                <div key={sentence.id} className="sentence">
-                  <p>{sentence.text}</p>
-                  <small>
-                    {sentence.supported ? "Verified" : "Needs review"} · {sentence.sentence_type}
-                  </small>
-                  <div className="citations">
-                    {paragraphView.links
-                      .filter((link) => link.sentence_id === sentence.id)
-                      .map((link) => (
-                        <span key={link.id} className="chip">
-                          {link.fact_id}
-                        </span>
-                      ))}
-                  </div>
-                </div>
-              ))}
+      <div className="app-grid">
+        <aside className="app-sidebar">
+          <section className="panel">
+            <h2>Connection</h2>
+            <div className="grid">
+              <Input
+                label="Base URL"
+                value={baseUrl}
+                onChange={(event) => setBaseUrl(event.target.value)}
+              />
+              <Input
+                label="Email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                placeholder="you@example.com"
+              />
+              <Input
+                label="Password"
+                type="password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                placeholder="Password123!"
+              />
             </div>
-            <h3>Facts</h3>
-            <div className="facts">
-              {paragraphView.facts.map((fact) => (
-                <div key={fact.id}>
-                  <span className="pill">{fact.source_type}</span>
-                  <p>{fact.content}</p>
-                  <small>{fact.id}</small>
-                </div>
-              ))}
+            <div className="actions">
+              <Button onClick={register}>Register</Button>
+              <Button variant="primary" onClick={login}>Login</Button>
             </div>
-          </div>
-        ) : null}
-      </section>
+          </section>
+
+          <section className="panel">
+            <h2>Documents + Facts</h2>
+            <div className="grid">
+              <Input
+                label="Document ID"
+                value={documentId}
+                onChange={(event) => setDocumentId(event.target.value)}
+                placeholder="UUID"
+              />
+              <label className="ui-field">
+                <span className="ui-field__label">Upload PDF</span>
+                <input
+                  className="ui-input"
+                  type="file"
+                  accept="application/pdf"
+                  onChange={(event) => setDocumentFile(event.target.files?.[0] || null)}
+                />
+              </label>
+              <Input
+                label="Extract Job ID"
+                value={extractJobId}
+                onChange={(event) => setExtractJobId(event.target.value)}
+                placeholder="UUID"
+              />
+            </div>
+            <div className="actions">
+              <Button onClick={uploadDocument}>Upload</Button>
+              <Button onClick={extractFacts}>Extract Facts</Button>
+              <Button onClick={loadFacts}>Load Facts</Button>
+            </div>
+            <div className="list">
+              {facts.length === 0 ? (
+                <p className="muted">No facts loaded yet.</p>
+              ) : (
+                facts.map((fact) => (
+                  <Card key={fact.id}>
+                    <Badge>{fact.source_type}</Badge>
+                    <p>{fact.content}</p>
+                    <small>Fact ID: {fact.id}</small>
+                  </Card>
+                ))
+              )}
+            </div>
+          </section>
+        </aside>
+
+        <main className="app-canvas">
+          <section className="panel">
+            <h2>Manuscript + Paragraph</h2>
+            <div className="grid">
+              <Input
+                label="Manuscript Title"
+                value={manuscriptTitle}
+                onChange={(event) => setManuscriptTitle(event.target.value)}
+              />
+              <Input
+                label="Manuscript ID"
+                value={manuscriptId}
+                onChange={(event) => setManuscriptId(event.target.value)}
+                placeholder="UUID"
+              />
+              <Input
+                label="Paragraph ID"
+                value={paragraphId}
+                onChange={(event) => setParagraphId(event.target.value)}
+                placeholder="UUID"
+              />
+            </div>
+            <div className="actions">
+              <Button onClick={createManuscript}>Create Manuscript</Button>
+              <Button onClick={attachDocument}>Link Document</Button>
+            </div>
+            <Textarea
+              className="textarea"
+              label="Paragraph Spec (JSON)"
+              value={paragraphSpec}
+              onChange={(event) => setParagraphSpec(event.target.value)}
+              rows={12}
+            />
+            <div className="actions">
+              <Button onClick={createParagraph}>Create Paragraph</Button>
+              <Button onClick={generateParagraph}>Generate</Button>
+              <Button onClick={verifyParagraph}>Verify</Button>
+            </div>
+          </section>
+
+          <section className="panel">
+            <h2>Paragraph View</h2>
+            <div className="actions">
+              <Button onClick={fetchParagraphView}>Load Paragraph View</Button>
+            </div>
+            {paragraphView ? (
+              <div className="view">
+                <h3>Paragraph</h3>
+                <div className="sentences">
+                  {paragraphView.sentences.map((sentence) => (
+                    <Card key={sentence.id} className="sentence">
+                      <p>{sentence.text}</p>
+                      <small>
+                        {sentence.supported ? "Verified" : "Needs review"} · {sentence.sentence_type}
+                      </small>
+                      <div className="citations">
+                        {paragraphView.links
+                          .filter((link) => link.sentence_id === sentence.id)
+                          .map((link) => (
+                            <Badge key={link.id} className="chip">
+                              {link.fact_id}
+                            </Badge>
+                          ))}
+                      </div>
+                    </Card>
+                  ))}
+                </div>
+                <h3>Facts</h3>
+                <div className="facts">
+                  {paragraphView.facts.map((fact) => (
+                    <Card key={fact.id}>
+                      <Badge>{fact.source_type}</Badge>
+                      <p>{fact.content}</p>
+                      <small>{fact.id}</small>
+                    </Card>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </section>
+        </main>
+
+        <aside className="app-inspector">
+          <section className="panel">
+            <h2>Jobs</h2>
+            <div className="grid">
+              <Input
+                label="Job ID Lookup"
+                value={jobLookupId}
+                onChange={(event) => setJobLookupId(event.target.value)}
+                placeholder="UUID"
+              />
+              <Input label="Generate Job ID" value={generateJobId} readOnly />
+              <Input label="Verify Job ID" value={verifyJobId} readOnly />
+            </div>
+            <div className="actions">
+              <Button onClick={fetchJobStatus}>Check Job Status</Button>
+            </div>
+            {jobStatus ? (
+              <Card className="job">
+                <strong>{jobStatus.job_type}</strong>
+                <span>Status: {jobStatus.status}</span>
+                {jobStatus.error ? <p className="error">{jobStatus.error}</p> : null}
+              </Card>
+            ) : null}
+          </section>
+        </aside>
+      </div>
     </div>
   );
 }
