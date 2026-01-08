@@ -89,20 +89,20 @@ class StubLLMProvider:
         section = inputs.get("paragraph_spec", {}).get("section", "")
         intent = inputs.get("paragraph_spec", {}).get("intent", "")
         allowed_facts = inputs.get("allowed_facts", [])
-        linked_fact_id = allowed_facts[0].get("fact_id") if allowed_facts else None
+        linked_fact_ids = [fact.get("fact_id") for fact in allowed_facts if fact.get("fact_id")]
         paragraph_payload: dict = {
             "section": section,
             "intent": intent,
             "sentences": [],
             "missing_evidence": [],
         }
-        if linked_fact_id:
+        if linked_fact_ids:
             paragraph_payload["sentences"] = [
                 {
                     "order": 1,
                     "sentence_type": "topic",
                     "text": "Placeholder generated sentence.",
-                    "citations": [str(linked_fact_id)],
+                    "citations": [str(fact_id) for fact_id in linked_fact_ids],
                 }
             ]
         else:
