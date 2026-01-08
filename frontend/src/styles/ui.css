@@ -29,6 +29,10 @@
   transition: border 0.15s ease, box-shadow 0.15s ease;
 }
 
+.ui-file-input {
+  display: none;
+}
+
 .ui-input:focus,
 .ui-select:focus,
 .ui-textarea:focus {
@@ -91,6 +95,15 @@
 .ui-button--lg {
   padding: 12px 22px;
   font-size: 1rem;
+}
+
+.actions--stacked {
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.actions--spaced {
+  margin-bottom: var(--space-4);
 }
 
 .ui-badge {

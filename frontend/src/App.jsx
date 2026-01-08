@@ -1,17 +1,18 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import Badge from "./components/ui/Badge";
 import Button from "./components/ui/Button";
 import Card from "./components/ui/Card";
 import Input from "./components/ui/Input";
 import Toast from "./components/ui/Toast";
-import { isJobTerminal } from "./api/jobs";
+import JobStatusPanel from "./features/jobs/JobStatusPanel";
+import InspectorPanel from "./features/inspector/InspectorPanel";
+import { useJobStatus } from "./hooks/useJobStatus";
 import {
   createManuscript as apiCreateManuscript,
   createParagraph as apiCreateParagraph,
   extractDocumentFacts as apiExtractDocumentFacts,
   fetchDocumentFacts as apiFetchDocumentFacts,
-  fetchJobStatus as apiFetchJobStatus,
   fetchParagraphRuns as apiFetchParagraphRuns,
   fetchParagraphView as apiFetchParagraphView,
   generateParagraph as apiGenerateParagraph,
@@ -79,6 +80,7 @@ function isValidUuid(value) {
 }
 
 function App() {
+  const uploadInputRef = useRef(null);
   const [baseUrl, setBaseUrl] = useState(API_BASE_URL);
   const [token, setToken] = useState(localStorage.getItem(tokenKey) || "");
   const [route, setRoute] = useState(getRouteFromHash());
@@ -114,13 +116,43 @@ function App() {
     /** @type {ParagraphView | null} */ (null)
   );
   const [paragraphRuns, setParagraphRuns] = useState(/** @type {Run[]} */ ([]));
+  const [isRunsLoading, setIsRunsLoading] = useState(false);
   const [jobLookupId, setJobLookupId] = useState("");
-  const [jobStatus, setJobStatus] = useState(/** @type {Job | null} */ (null));
-  const [autoPollJobId, setAutoPollJobId] = useState("");
   const [activeSentenceId, setActiveSentenceId] = useState("");
   const [hoveredSentenceId, setHoveredSentenceId] = useState("");
   const [editingSentenceId, setEditingSentenceId] = useState("");
   const [editingSentenceText, setEditingSentenceText] = useState("");
+
+  function handleJobTerminal(payload) {
+    if (payload.status === "FAILED") {
+      setToast({
+        variant: "danger",
+        title: "Job failed",
+        message: payload.error || "Job failed without error detail."
+      });
+    } else {
+      setToast({
+        variant: "success",
+        title: "Job complete",
+        message: `${payload.job_type} finished.`
+      });
+    }
+  }
+
+  const {
+    jobStatus,
+    fetchJobStatus,
+    startPolling,
+    stopPolling,
+    clearStatus,
+    isPolling,
+    isLoading: isJobStatusLoading
+  } = useJobStatus({
+    baseUrl,
+    token,
+    onTerminal: handleJobTerminal,
+    onError: handleError
+  });
 
   const tokenPreview = useMemo(() => {
     if (!token) return "Not set";
@@ -233,7 +265,7 @@ function App() {
       });
       const jobId = requireId(payload, "Update sentence");
       setJobLookupId(jobId);
-      setAutoPollJobId(jobId);
+      startPolling(jobId);
       setEditingSentenceId("");
       setEditingSentenceText("");
       setToast({
@@ -259,6 +291,25 @@ function App() {
     setToast({ variant: "danger", title: "Action failed", message });
   }
 
+  function resetIds() {
+    setDocumentId("");
+    setManuscriptId("");
+    setParagraphId("");
+    setSelectedFactIds([]);
+    setFacts([]);
+    setParagraphView(null);
+    setDocumentFile(null);
+    setExtractJobId("");
+    setGenerateJobId("");
+    setVerifyJobId("");
+    setJobLookupId("");
+    stopPolling();
+    clearStatus();
+    localStorage.removeItem(documentIdKey);
+    localStorage.removeItem(manuscriptIdKey);
+    localStorage.removeItem(paragraphIdKey);
+  }
+
   async function register() {
     updateStatus("Registering...");
     try {
@@ -277,6 +328,7 @@ function App() {
       const newToken = payload.access_token;
       setToken(newToken);
       localStorage.setItem(tokenKey, newToken);
+      resetIds();
       updateStatus("Logged in.");
       setToast({ variant: "success", title: "Welcome back", message: "Login successful." });
     } catch (err) {
@@ -284,20 +336,36 @@ function App() {
     }
   }
 
-  async function uploadDocument() {
-    if (!documentFile) {
+  async function uploadDocument(fileOverride) {
+    const file = fileOverride || documentFile;
+    if (!file) {
       setError("Pick a PDF first.");
       return;
     }
     updateStatus("Uploading document...");
     try {
-      const payload = await apiUploadDocument({ baseUrl, token, file: documentFile });
+      const payload = await apiUploadDocument({ baseUrl, token, file });
       setDocumentId(requireId(payload, "Upload"));
       updateStatus("Document uploaded.");
       setToast({ variant: "success", title: "Upload complete", message: "Document stored." });
     } catch (err) {
       handleError(err);
     }
+  }
+
+  function handleUploadFileChange(event) {
+    const file = event.target.files?.[0] || null;
+    if (!file) {
+      return;
+    }
+    setDocumentFile(file);
+    uploadDocument(file);
+    event.target.value = "";
+  }
+
+  function triggerUploadPicker() {
+    if (!canUpload) return;
+    uploadInputRef.current?.click();
   }
 
   async function extractFacts() {
@@ -427,7 +495,7 @@ function App() {
       const jobId = requireId(payload, "Generate paragraph");
       setGenerateJobId(jobId);
       setJobLookupId(jobId);
-      setAutoPollJobId(jobId);
+      startPolling(jobId);
       updateStatus("Generate job queued.");
       setToast({
         variant: "success",
@@ -450,7 +518,7 @@ function App() {
       const jobId = requireId(payload, "Verify paragraph");
       setVerifyJobId(jobId);
       setJobLookupId(jobId);
-      setAutoPollJobId(jobId);
+      startPolling(jobId);
       updateStatus("Verify job queued.");
       setToast({
         variant: "success",
@@ -491,6 +559,7 @@ function App() {
   }
 
   async function fetchParagraphRuns(paragraphIdToLoad) {
+    setIsRunsLoading(true);
     try {
       const payload = await apiFetchParagraphRuns({
         baseUrl,
@@ -500,63 +569,20 @@ function App() {
       setParagraphRuns(payload);
     } catch (err) {
       handleError(err);
+    } finally {
+      setIsRunsLoading(false);
     }
   }
 
-  async function fetchJobStatus() {
+  async function handleFetchJobStatus() {
     if (!jobLookupId) {
       setError("Job ID is required.");
       return;
     }
     updateStatus("Fetching job status...");
-    try {
-      const payload = await apiFetchJobStatus({ baseUrl, token, jobId: jobLookupId });
-      setJobStatus(payload);
-      if (payload?.status && isJobTerminal(payload.status)) {
-        setAutoPollJobId("");
-        if (payload.status === "FAILED") {
-          setToast({
-            variant: "danger",
-            title: "Job failed",
-            message: payload.error || "Job failed without error detail."
-          });
-        } else {
-          setToast({
-            variant: "success",
-            title: "Job complete",
-            message: `${payload.job_type} finished.`
-          });
-        }
-      }
+    const payload = await fetchJobStatus(jobLookupId);
+    if (payload) {
       updateStatus("Job status loaded.");
-    } catch (err) {
-      handleError(err);
-    }
-  }
-
-  async function pollJobStatus(jobId) {
-    try {
-      const payload = await apiFetchJobStatus({ baseUrl, token, jobId });
-      setJobStatus(payload);
-      if (payload?.status && isJobTerminal(payload.status)) {
-        setAutoPollJobId("");
-        if (payload.status === "FAILED") {
-          setToast({
-            variant: "danger",
-            title: "Job failed",
-            message: payload.error || "Job failed without error detail."
-          });
-        } else {
-          setToast({
-            variant: "success",
-            title: "Job complete",
-            message: `${payload.job_type} finished.`
-          });
-        }
-      }
-    } catch (err) {
-      handleError(err);
-      setAutoPollJobId("");
     }
   }
 
@@ -571,14 +597,6 @@ function App() {
   }, [paragraphView, activeSentenceId]);
 
   useEffect(() => {
-    if (!autoPollJobId) return undefined;
-    const interval = setInterval(() => {
-      pollJobStatus(autoPollJobId);
-    }, 2000);
-    return () => clearInterval(interval);
-  }, [autoPollJobId, baseUrl, token]);
-
-  useEffect(() => {
     if (!paragraphView?.paragraph?.id) {
       setParagraphRuns([]);
       return;
@@ -589,6 +607,11 @@ function App() {
   const activeSentence = paragraphView?.sentences.find(
     (sentence) => sentence.id === activeSentenceId
   );
+  const paragraphLinkedFacts = useMemo(() => {
+    if (!paragraphView) return [];
+    const linkedIds = new Set(paragraphView.links.map((link) => link.fact_id));
+    return paragraphView.facts.filter((fact) => linkedIds.has(fact.id));
+  }, [paragraphView]);
   const highlightedSentenceId = hoveredSentenceId || activeSentenceId;
   const paragraphJobStatus =
     jobStatus && paragraphView && jobStatus.target_id === paragraphView.paragraph.id
@@ -598,7 +621,7 @@ function App() {
     sentence.verifier_failure_modes?.includes("UNCITED_CLAIM")
   );
   const paragraphStatus = paragraphView?.paragraph?.status || "UNKNOWN";
-  const isJobActive = Boolean(autoPollJobId);
+  const isJobActive = isPolling;
   const statusVariant =
     paragraphStatus === "VERIFIED"
       ? "success"
@@ -730,14 +753,29 @@ function App() {
       <div className="app-grid">
         <aside className="app-sidebar">
           <section className="panel" id="library-section">
-            <h2>Documents + Facts</h2>
-            <p className="muted">Upload a PDF, extract facts, then curate evidence.</p>
-            <ol className="step-list">
-              <li>Upload PDF</li>
-              <li>Extract Facts</li>
-              <li>Select Facts</li>
-              <li>Create Paragraph</li>
-            </ol>
+            <h2>Generate Facts</h2>
+            <div className="ui-field">
+              <input
+                ref={uploadInputRef}
+                className="ui-file-input"
+                type="file"
+                accept="application/pdf"
+                onChange={handleUploadFileChange}
+                disabled={!canUpload}
+              />
+              <div className="actions actions--stacked actions--spaced">
+                <Button onClick={triggerUploadPicker} disabled={!canUpload}>
+                  Upload PDF
+                </Button>
+                <Button onClick={extractFacts} disabled={!canExtract}>
+                  Extract Facts
+                </Button>
+                <Button onClick={loadFacts} disabled={!canExtract}>
+                  Load Facts
+                </Button>
+              </div>
+              {documentFile ? <span className="muted">{documentFile.name}</span> : null}
+            </div>
             <div className="grid">
               <Input
                 label="Document ID"
@@ -745,32 +783,12 @@ function App() {
                 onChange={(event) => setDocumentId(event.target.value)}
                 placeholder="UUID"
               />
-              <label className="ui-field">
-                <span className="ui-field__label">Upload PDF</span>
-                <input
-                  className="ui-input"
-                  type="file"
-                  accept="application/pdf"
-                  onChange={(event) => setDocumentFile(event.target.files?.[0] || null)}
-                />
-              </label>
               <Input
                 label="Extract Job ID"
                 value={extractJobId}
                 onChange={(event) => setExtractJobId(event.target.value)}
                 placeholder="UUID"
               />
-            </div>
-            <div className="actions">
-              <Button onClick={uploadDocument} disabled={!canUpload}>
-                Upload
-              </Button>
-              <Button onClick={extractFacts} disabled={!canExtract}>
-                Extract Facts
-              </Button>
-              <Button onClick={loadFacts} disabled={!canExtract}>
-                Load Facts
-              </Button>
             </div>
             <div className="fact-filters">
               <Input
@@ -911,15 +929,7 @@ function App() {
               <Button
                 variant="muted"
                 onClick={() => {
-                  setDocumentId("");
-                  setManuscriptId("");
-                  setParagraphId("");
-                  setSelectedFactIds([]);
-                  setFacts([]);
-                  setParagraphView(null);
-                  localStorage.removeItem(documentIdKey);
-                  localStorage.removeItem(manuscriptIdKey);
-                  localStorage.removeItem(paragraphIdKey);
+                  resetIds();
                   setToast({ variant: "success", title: "Reset", message: "IDs cleared." });
                 }}
               >
@@ -1184,14 +1194,14 @@ function App() {
                   </div>
                 ) : null}
                 <h3>Facts</h3>
-                {paragraphView.facts.length === 0 ? (
+                {paragraphLinkedFacts.length === 0 ? (
                   <div className="empty-card">
-                    <p className="muted">No facts attached to this manuscript.</p>
-                    <p className="muted">Link a document or add manual facts.</p>
+                    <p className="muted">No facts linked to this paragraph yet.</p>
+                    <p className="muted">Verify sentences to attach citations.</p>
                   </div>
                 ) : (
                   <div className="facts">
-                    {paragraphView.facts.map((fact) => (
+                    {paragraphLinkedFacts.map((fact) => (
                       <Card
                         key={fact.id}
                         className={
@@ -1217,115 +1227,32 @@ function App() {
         </main>
 
         <aside className="app-inspector" id="inspector-section">
-          <section className="panel">
-            <h2>Jobs</h2>
-            <div className="grid">
-              <Input
-                label="Job ID Lookup"
-                value={jobLookupId}
-                onChange={(event) => setJobLookupId(event.target.value)}
-                placeholder="UUID"
-              />
-              <Input label="Generate Job ID" value={generateJobId} readOnly />
-              <Input label="Verify Job ID" value={verifyJobId} readOnly />
-            </div>
-            <div className="actions">
-              <Button onClick={fetchJobStatus}>Check Job Status</Button>
-              {jobStatus?.status === "FAILED" ? (
-                <Button
-                  variant="danger"
-                  size="sm"
-                  onClick={() => {
-                    if (jobStatus.job_type === "GENERATE_PARAGRAPH") {
-                      generateParagraph();
-                    } else if (jobStatus.job_type === "VERIFY_PARAGRAPH") {
-                      verifyParagraph();
-                    }
-                  }}
-                >
-                  Retry Job
-                </Button>
-              ) : null}
-            </div>
-            {jobStatus ? (
-              <Card className="job">
-                <strong>{jobStatus.job_type}</strong>
-                <span>Status: {jobStatus.status}</span>
-                {jobStatus.error ? <p className="error">{jobStatus.error}</p> : null}
-              </Card>
-            ) : null}
-          </section>
-          <section className="panel">
-            <h2>Inspector</h2>
-            {paragraphView ? (
-              <div className="inspector">
-                <div>
-                  <span className="inspector__label">Paragraph</span>
-                  <p className="inspector__value">{paragraphView.paragraph.id}</p>
-                  <p className="muted">
-                    {paragraphView.paragraph.section} · {paragraphView.paragraph.intent}
-                  </p>
-                  <p className="muted">Status: {paragraphView.paragraph.status}</p>
-                </div>
-                <div>
-                  <span className="inspector__label">Allowed Facts</span>
-                  <p className="inspector__value">
-                    {paragraphView.paragraph.allowed_fact_ids.length}
-                  </p>
-                </div>
-                <div>
-                  <span className="inspector__label">Latest Job Status</span>
-                  {paragraphJobStatus ? (
-                    <p className="inspector__value">
-                      {paragraphJobStatus.job_type} · {paragraphJobStatus.status}
-                    </p>
-                  ) : (
-                    <p className="muted">Run a job to see status here.</p>
-                  )}
-                </div>
-                <div>
-                  <span className="inspector__label">Active Sentence</span>
-                  {activeSentence ? (
-                    <>
-                      <p className="inspector__value">{activeSentence.text}</p>
-                      <p className="muted">
-                        {activeSentence.supported ? "Verified" : "Needs review"} ·{" "}
-                        {activeSentence.sentence_type}
-                      </p>
-                      {activeSentence.verifier_explanation ? (
-                        <p className="muted">{activeSentence.verifier_explanation}</p>
-                      ) : null}
-                    </>
-                  ) : (
-                    <p className="muted">Select a sentence to inspect.</p>
-                  )}
-                </div>
-                <div>
-                  <span className="inspector__label">Run History</span>
-                  {paragraphRuns.length ? (
-                    <div className="run-list">
-                      {paragraphRuns.map((run) => (
-                        <Card key={run.id} className="run-card">
-                          <strong>{run.run_type}</strong>
-                          <span className="muted">{run.model}</span>
-                          <span className="muted">
-                            {new Date(run.created_at).toLocaleString()}
-                          </span>
-                          {run.trace_id ? (
-                            <span className="muted">Trace: {run.trace_id}</span>
-                          ) : null}
-                        </Card>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="muted">No runs recorded yet.</p>
-                  )}
-                </div>
-              </div>
-            ) : (
-              <p className="muted">Load a paragraph to inspect details.</p>
-            )}
-          </section>
+          <JobStatusPanel
+            jobLookupId={jobLookupId}
+            onJobLookupIdChange={setJobLookupId}
+            generateJobId={generateJobId}
+            verifyJobId={verifyJobId}
+            onFetchJobStatus={handleFetchJobStatus}
+            jobStatus={jobStatus}
+            isLoading={isJobStatusLoading}
+            isPolling={isPolling}
+            onRetryJob={() => {
+              if (!jobStatus) return;
+              if (jobStatus.job_type === "GENERATE_PARAGRAPH") {
+                generateParagraph();
+              } else if (jobStatus.job_type === "VERIFY_PARAGRAPH") {
+                verifyParagraph();
+              }
+            }}
+          />
+          <InspectorPanel
+            paragraphView={paragraphView}
+            paragraphRuns={paragraphRuns}
+            paragraphJobStatus={paragraphJobStatus}
+            activeSentenceId={activeSentenceId}
+            activeSentence={activeSentence}
+            isRunsLoading={isRunsLoading}
+          />
         </aside>
       </div>
     </div>
