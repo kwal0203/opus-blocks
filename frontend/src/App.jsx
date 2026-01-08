@@ -791,15 +791,12 @@ function App() {
                 onChange={handleUploadFileChange}
                 disabled={!canUpload}
               />
-              <div className="actions actions--stacked actions--spaced">
+              <div className="actions actions--spaced">
                 <Button onClick={triggerUploadPicker} disabled={!canUpload}>
                   Upload PDF
                 </Button>
                 <Button onClick={extractFacts} disabled={!canExtract}>
                   Extract Facts
-                </Button>
-                <Button onClick={loadFacts} disabled={!canExtract}>
-                  Load Facts
                 </Button>
               </div>
               {documentFile ? <span className="muted">{documentFile.name}</span> : null}
