@@ -814,7 +814,7 @@ function App() {
               </div>
               {documentFile ? <span className="muted">{documentFile.name}</span> : null}
             </div>
-            <div className="grid">
+            <div className="grid canvas-fields">
               <Input
                 label="Document ID"
                 value={documentId}
@@ -938,34 +938,13 @@ function App() {
 
         <main className="app-canvas">
           <section className="panel" id="canvas-section">
-            <h2>Manuscript Canvas</h2>
-            <p className="muted">
-              Create a manuscript, link documents, and scaffold paragraphs by section.
-            </p>
-            <ol className="step-list">
-              <li>Create Manuscript</li>
-              <li>Link Document</li>
-              <li>Create Paragraph</li>
-              <li>Generate → Verify</li>
-            </ol>
-            <div className="grid">
-              <Input
-                label="Manuscript Title"
-                value={manuscriptTitle}
-                onChange={(event) => setManuscriptTitle(event.target.value)}
-              />
-              <Input
-                label="Manuscript ID"
-                value={manuscriptId}
-                onChange={(event) => setManuscriptId(event.target.value)}
-                placeholder="UUID"
-              />
-              <Input
-                label="Paragraph ID"
-                value={paragraphId}
-                onChange={(event) => setParagraphId(event.target.value)}
-                placeholder="UUID"
-              />
+            <div className="panel-header">
+              <h2>Manuscript Canvas</h2>
+              {paragraphView ? (
+                <Badge variant={statusVariant}>
+                  {paragraphStatus.replace("_", " ")}
+                </Badge>
+              ) : null}
             </div>
             <div className="actions">
               <Button onClick={createManuscript} disabled={!canCreateManuscript}>
@@ -999,10 +978,7 @@ function App() {
                 Verify
               </Button>
             </div>
-            <div className="actions">
-              <Badge variant={statusVariant}>
-                {paragraphStatus.replace("_", " ")}
-              </Badge>
+            <div className="actions canvas-status">
               {isJobActive ? <span className="muted">Job running…</span> : null}
               {paragraphJobStatus?.status === "FAILED" ? (
                 <Button
@@ -1019,6 +995,25 @@ function App() {
                   Retry last job
                 </Button>
               ) : null}
+            </div>
+            <div className="grid">
+              <Input
+                label="Manuscript Title"
+                value={manuscriptTitle}
+                onChange={(event) => setManuscriptTitle(event.target.value)}
+              />
+              <Input
+                label="Manuscript ID"
+                value={manuscriptId}
+                onChange={(event) => setManuscriptId(event.target.value)}
+                placeholder="UUID"
+              />
+              <Input
+                label="Paragraph ID"
+                value={paragraphId}
+                onChange={(event) => setParagraphId(event.target.value)}
+                placeholder="UUID"
+              />
             </div>
             <div className="builder-grid">
               <div className="builder-card">
@@ -1139,11 +1134,6 @@ function App() {
 
           <section className="panel">
             <h2>Paragraph View</h2>
-            <div className="actions">
-              <Button onClick={() => fetchParagraphView()} disabled={!canViewParagraph}>
-                Load Paragraph View
-              </Button>
-            </div>
             {paragraphView ? (
               <div className="view">
                 <h3>Paragraph</h3>
