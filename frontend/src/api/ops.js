@@ -104,3 +104,12 @@ export function fetchJobStatus({ baseUrl, token, jobId }) {
     token
   });
 }
+
+export function updateSentence({ baseUrl, token, sentenceId, text }) {
+  return apiJson(`/sentences/${sentenceId}`, {
+    method: "PATCH",
+    baseUrl,
+    token,
+    body: { text }
+  });
+}

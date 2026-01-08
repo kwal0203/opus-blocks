@@ -19,7 +19,8 @@ import {
   loginUser as apiLoginUser,
   registerUser as apiRegisterUser,
   uploadDocument as apiUploadDocument,
-  verifyParagraph as apiVerifyParagraph
+  verifyParagraph as apiVerifyParagraph,
+  updateSentence as apiUpdateSentence
 } from "./api/ops";
 import { API_BASE_URL } from "./config";
 
@@ -71,6 +72,12 @@ function requireId(payload, label) {
   return payload.id;
 }
 
+function isValidUuid(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+    value
+  );
+}
+
 function App() {
   const [baseUrl, setBaseUrl] = useState(API_BASE_URL);
   const [token, setToken] = useState(localStorage.getItem(tokenKey) || "");
@@ -97,9 +104,7 @@ function App() {
   const [manuscriptId, setManuscriptId] = useState(
     localStorage.getItem(manuscriptIdKey) || ""
   );
-  const [paragraphSpec, setParagraphSpec] = useState(
-    JSON.stringify(defaultSpec, null, 2)
-  );
+  const [paragraphSpec, setParagraphSpec] = useState(defaultSpec);
   const [paragraphId, setParagraphId] = useState(
     localStorage.getItem(paragraphIdKey) || ""
   );
@@ -113,6 +118,9 @@ function App() {
   const [jobStatus, setJobStatus] = useState(/** @type {Job | null} */ (null));
   const [autoPollJobId, setAutoPollJobId] = useState("");
   const [activeSentenceId, setActiveSentenceId] = useState("");
+  const [hoveredSentenceId, setHoveredSentenceId] = useState("");
+  const [editingSentenceId, setEditingSentenceId] = useState("");
+  const [editingSentenceText, setEditingSentenceText] = useState("");
 
   const tokenPreview = useMemo(() => {
     if (!token) return "Not set";
@@ -121,6 +129,12 @@ function App() {
 
   const isAuthenticated = Boolean(token);
   const sections = ["Introduction", "Methods", "Results", "Discussion"];
+  const intentOptions = {
+    Introduction: ["Background Context", "Prior Work Summary", "Knowledge Gap", "Study Objective"],
+    Methods: ["Study Design", "Participants / Data Sources", "Procedures / Protocol", "Analysis Methods"],
+    Results: ["Primary Results", "Secondary Results", "Null / Negative Results"],
+    Discussion: ["Result Interpretation", "Comparison to Prior Work", "Limitations", "Implications / Future Work"]
+  };
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -183,6 +197,55 @@ function App() {
   const pagedFacts = useMemo(() => {
     return filteredFacts.slice(0, factPageSize);
   }, [filteredFacts, factPageSize]);
+
+  const canUpload = Boolean(token);
+  const canExtract = Boolean(documentId);
+  const canCreateManuscript = Boolean(token);
+  const canLinkDocument = Boolean(manuscriptId && documentId);
+  const canSelectFacts = facts.length > 0;
+  const canCreateParagraph = Boolean(manuscriptId && selectedFactIds.length);
+  const canGenerate = Boolean(paragraphId);
+  const canVerify = Boolean(paragraphId);
+  const canViewParagraph = Boolean(paragraphId);
+
+  function beginEditSentence(sentence) {
+    setEditingSentenceId(sentence.id);
+    setEditingSentenceText(sentence.text);
+  }
+
+  function cancelEditSentence() {
+    setEditingSentenceId("");
+    setEditingSentenceText("");
+  }
+
+  async function saveSentenceEdit(sentenceId) {
+    if (!editingSentenceText.trim()) {
+      setError("Sentence text cannot be empty.");
+      return;
+    }
+    updateStatus("Saving sentence...");
+    try {
+      const payload = await apiUpdateSentence({
+        baseUrl,
+        token,
+        sentenceId,
+        text: editingSentenceText
+      });
+      const jobId = requireId(payload, "Update sentence");
+      setJobLookupId(jobId);
+      setAutoPollJobId(jobId);
+      setEditingSentenceId("");
+      setEditingSentenceText("");
+      setToast({
+        variant: "success",
+        title: "Sentence updated",
+        message: "Reverification started."
+      });
+      await fetchParagraphView(paragraphId);
+    } catch (err) {
+      handleError(err);
+    }
+  }
 
   function updateStatus(message) {
     setStatus(message);
@@ -316,25 +379,20 @@ function App() {
       setError("Manuscript ID is required.");
       return;
     }
-    let spec;
-    try {
-      spec = JSON.parse(paragraphSpec);
-    } catch (err) {
-      setError("Paragraph spec must be valid JSON.");
-      return;
-    }
     updateStatus("Creating paragraph...");
     try {
-      const specWithFacts = { ...spec, allowed_fact_ids: selectedFactIds };
+      const specWithFacts = { ...paragraphSpec, allowed_fact_ids: selectedFactIds };
       const payload = await apiCreateParagraph({
         baseUrl,
         token,
         manuscriptId,
         spec: specWithFacts
       });
-      setParagraphId(requireId(payload, "Create paragraph"));
+      const newParagraphId = requireId(payload, "Create paragraph");
+      setParagraphId(newParagraphId);
       updateStatus("Paragraph created.");
       setToast({ variant: "success", title: "Paragraph created", message: "Ready to generate." });
+      await fetchParagraphView(newParagraphId);
     } catch (err) {
       handleError(err);
     }
@@ -350,23 +408,12 @@ function App() {
   }
 
   function setParagraphSpecForSection(section) {
-    try {
-      const spec = JSON.parse(paragraphSpec);
-      const intentDefaults = {
-        Introduction: "Background Context",
-        Methods: "Study Design",
-        Results: "Primary Results",
-        Discussion: "Result Interpretation"
-      };
-      const nextSpec = {
-        ...spec,
-        section,
-        intent: intentDefaults[section] || spec.intent
-      };
-      setParagraphSpec(JSON.stringify(nextSpec, null, 2));
-    } catch (err) {
-      setError("Paragraph spec must be valid JSON.");
-    }
+    const nextIntent = intentOptions[section]?.[0] || paragraphSpec.intent;
+    setParagraphSpec((prev) => ({
+      ...prev,
+      section,
+      intent: nextIntent
+    }));
   }
 
   async function generateParagraph() {
@@ -415,14 +462,23 @@ function App() {
     }
   }
 
-  async function fetchParagraphView() {
-    if (!paragraphId) {
+  async function fetchParagraphView(paragraphIdToLoad = paragraphId) {
+    const trimmedId = String(paragraphIdToLoad ?? "").trim();
+    if (!trimmedId) {
       setError("Paragraph ID is required.");
+      return;
+    }
+    if (!isValidUuid(trimmedId)) {
+      setError(`Paragraph ID must be a valid UUID (got "${trimmedId}").`);
       return;
     }
     updateStatus("Loading paragraph view...");
     try {
-      const payload = await apiFetchParagraphView({ baseUrl, token, paragraphId });
+      const payload = await apiFetchParagraphView({
+        baseUrl,
+        token,
+        paragraphId: trimmedId
+      });
       setParagraphView(payload);
       if (!payload?.sentences?.length) {
         setStatus("Paragraph has no sentences yet.");
@@ -533,10 +589,22 @@ function App() {
   const activeSentence = paragraphView?.sentences.find(
     (sentence) => sentence.id === activeSentenceId
   );
+  const highlightedSentenceId = hoveredSentenceId || activeSentenceId;
   const paragraphJobStatus =
     jobStatus && paragraphView && jobStatus.target_id === paragraphView.paragraph.id
       ? jobStatus
       : null;
+  const missingEvidence = paragraphView?.sentences?.some((sentence) =>
+    sentence.verifier_failure_modes?.includes("UNCITED_CLAIM")
+  );
+  const paragraphStatus = paragraphView?.paragraph?.status || "UNKNOWN";
+  const isJobActive = Boolean(autoPollJobId);
+  const statusVariant =
+    paragraphStatus === "VERIFIED"
+      ? "success"
+      : paragraphStatus === "PENDING_VERIFY" || paragraphStatus === "GENERATING"
+        ? "warning"
+        : "danger";
 
   if (!isAuthenticated || route === "auth") {
     return (
@@ -664,6 +732,12 @@ function App() {
           <section className="panel" id="library-section">
             <h2>Documents + Facts</h2>
             <p className="muted">Upload a PDF, extract facts, then curate evidence.</p>
+            <ol className="step-list">
+              <li>Upload PDF</li>
+              <li>Extract Facts</li>
+              <li>Select Facts</li>
+              <li>Create Paragraph</li>
+            </ol>
             <div className="grid">
               <Input
                 label="Document ID"
@@ -688,9 +762,15 @@ function App() {
               />
             </div>
             <div className="actions">
-              <Button onClick={uploadDocument}>Upload</Button>
-              <Button onClick={extractFacts}>Extract Facts</Button>
-              <Button onClick={loadFacts}>Load Facts</Button>
+              <Button onClick={uploadDocument} disabled={!canUpload}>
+                Upload
+              </Button>
+              <Button onClick={extractFacts} disabled={!canExtract}>
+                Extract Facts
+              </Button>
+              <Button onClick={loadFacts} disabled={!canExtract}>
+                Load Facts
+              </Button>
             </div>
             <div className="fact-filters">
               <Input
@@ -796,6 +876,12 @@ function App() {
             <p className="muted">
               Create a manuscript, link documents, and scaffold paragraphs by section.
             </p>
+            <ol className="step-list">
+              <li>Create Manuscript</li>
+              <li>Link Document</li>
+              <li>Create Paragraph</li>
+              <li>Generate → Verify</li>
+            </ol>
             <div className="grid">
               <Input
                 label="Manuscript Title"
@@ -816,35 +902,174 @@ function App() {
               />
             </div>
             <div className="actions">
-              <Button onClick={createManuscript}>Create Manuscript</Button>
-              <Button onClick={attachDocument}>Link Document</Button>
-            </div>
-            <div className="section-grid">
-              {sections.map((section) => (
-                <Card key={section} className="section-card">
-                  <div>
-                    <h3>{section}</h3>
-                    <p className="muted">Add a paragraph scaffold for this section.</p>
-                  </div>
-                  <Button
-                    size="sm"
-                    variant="muted"
-                    onClick={() => setParagraphSpecForSection(section)}
-                  >
-                    Set Spec
-                  </Button>
-                </Card>
-              ))}
+              <Button onClick={createManuscript} disabled={!canCreateManuscript}>
+                Create Manuscript
+              </Button>
+              <Button onClick={attachDocument} disabled={!canLinkDocument}>
+                Link Document
+              </Button>
+              <Button
+                variant="muted"
+                onClick={() => {
+                  setDocumentId("");
+                  setManuscriptId("");
+                  setParagraphId("");
+                  setSelectedFactIds([]);
+                  setFacts([]);
+                  setParagraphView(null);
+                  localStorage.removeItem(documentIdKey);
+                  localStorage.removeItem(manuscriptIdKey);
+                  localStorage.removeItem(paragraphIdKey);
+                  setToast({ variant: "success", title: "Reset", message: "IDs cleared." });
+                }}
+              >
+                Reset IDs
+              </Button>
             </div>
             <div className="actions">
-              <Button onClick={createParagraph}>Create Paragraph</Button>
+              <Button onClick={createParagraph} disabled={!canCreateParagraph}>
+                Create Paragraph
+              </Button>
               <Button
                 onClick={generateParagraph}
                 variant={selectedFactIds.length ? "primary" : "muted"}
+                disabled={!canGenerate || isJobActive}
               >
                 Generate
               </Button>
-              <Button onClick={verifyParagraph}>Verify</Button>
+              <Button onClick={verifyParagraph} disabled={!canVerify || isJobActive}>
+                Verify
+              </Button>
+            </div>
+            <div className="actions">
+              <Badge variant={statusVariant}>
+                {paragraphStatus.replace("_", " ")}
+              </Badge>
+              {isJobActive ? <span className="muted">Job running…</span> : null}
+              {paragraphJobStatus?.status === "FAILED" ? (
+                <Button
+                  size="sm"
+                  variant="danger"
+                  onClick={() => {
+                    if (paragraphJobStatus.job_type === "GENERATE_PARAGRAPH") {
+                      generateParagraph();
+                    } else if (paragraphJobStatus.job_type === "VERIFY_PARAGRAPH") {
+                      verifyParagraph();
+                    }
+                  }}
+                >
+                  Retry last job
+                </Button>
+              ) : null}
+            </div>
+            <div className="builder-grid">
+              <div className="builder-card">
+                <h3>Section</h3>
+                <div className="chip-row">
+                  {sections.map((section) => (
+                    <Button
+                      key={section}
+                      size="sm"
+                      variant={paragraphSpec.section === section ? "primary" : "muted"}
+                      onClick={() => setParagraphSpecForSection(section)}
+                    >
+                      {section}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+              <div className="builder-card">
+                <h3>Intent</h3>
+                <div className="chip-row">
+                  {intentOptions[paragraphSpec.section]?.map((intent) => (
+                    <Button
+                      key={intent}
+                      size="sm"
+                      variant={paragraphSpec.intent === intent ? "primary" : "muted"}
+                      onClick={() =>
+                        setParagraphSpec((prev) => ({
+                          ...prev,
+                          intent
+                        }))
+                      }
+                    >
+                      {intent}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+              <div className="builder-card">
+                <h3>Structure</h3>
+                <div className="grid">
+                  <Input
+                    label="Evidence sentences"
+                    type="number"
+                    min="1"
+                    value={paragraphSpec.required_structure.evidence_sentences}
+                    onChange={(event) =>
+                      setParagraphSpec((prev) => ({
+                        ...prev,
+                        required_structure: {
+                          ...prev.required_structure,
+                          evidence_sentences: Number(event.target.value)
+                        }
+                      }))
+                    }
+                  />
+                  <Input
+                    label="Min words"
+                    type="number"
+                    min="1"
+                    value={paragraphSpec.style.target_length_words[0]}
+                    onChange={(event) =>
+                      setParagraphSpec((prev) => ({
+                        ...prev,
+                        style: {
+                          ...prev.style,
+                          target_length_words: [
+                            Number(event.target.value),
+                            prev.style.target_length_words[1]
+                          ]
+                        }
+                      }))
+                    }
+                  />
+                  <Input
+                    label="Max words"
+                    type="number"
+                    min="1"
+                    value={paragraphSpec.style.target_length_words[1]}
+                    onChange={(event) =>
+                      setParagraphSpec((prev) => ({
+                        ...prev,
+                        style: {
+                          ...prev.style,
+                          target_length_words: [
+                            prev.style.target_length_words[0],
+                            Number(event.target.value)
+                          ]
+                        }
+                      }))
+                    }
+                  />
+                </div>
+              </div>
+              <div className="builder-card">
+                <h3>Constraints</h3>
+                <Input
+                  label="Allowed scope"
+                  value={paragraphSpec.constraints.allowed_scope}
+                  onChange={(event) =>
+                    setParagraphSpec((prev) => ({
+                      ...prev,
+                      constraints: {
+                        ...prev.constraints,
+                        allowed_scope: event.target.value
+                      }
+                    }))
+                  }
+                />
+              </div>
             </div>
             <div className="selection-summary">
               <Badge variant="success">{selectedFactIds.length} facts selected</Badge>
@@ -857,7 +1082,9 @@ function App() {
           <section className="panel">
             <h2>Paragraph View</h2>
             <div className="actions">
-              <Button onClick={fetchParagraphView}>Load Paragraph View</Button>
+              <Button onClick={() => fetchParagraphView()} disabled={!canViewParagraph}>
+                Load Paragraph View
+              </Button>
             </div>
             {paragraphView ? (
               <div className="view">
@@ -878,8 +1105,43 @@ function App() {
                             : "sentence"
                         }
                         onClick={() => setActiveSentenceId(sentence.id)}
+                        onMouseEnter={() => setHoveredSentenceId(sentence.id)}
+                        onMouseLeave={() => setHoveredSentenceId("")}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            beginEditSentence(sentence);
+                          }
+                        }}
                       >
-                        <p>{sentence.text}</p>
+                        {editingSentenceId === sentence.id ? (
+                          <div className="sentence-edit">
+                            <textarea
+                              className="ui-textarea"
+                              rows={3}
+                              value={editingSentenceText}
+                              onChange={(event) => setEditingSentenceText(event.target.value)}
+                            />
+                            <div className="actions">
+                              <Button size="sm" variant="primary" onClick={() => saveSentenceEdit(sentence.id)}>
+                                Save
+                              </Button>
+                              <Button size="sm" variant="muted" onClick={cancelEditSentence}>
+                                Cancel
+                              </Button>
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            <p>{sentence.text}</p>
+                            <div className="sentence-actions">
+                              <Button size="sm" variant="muted" onClick={() => beginEditSentence(sentence)}>
+                                Edit
+                              </Button>
+                            </div>
+                          </>
+                        )}
                         <small>
                           {sentence.supported ? "Verified" : "Needs review"} · {sentence.sentence_type}
                         </small>
@@ -895,16 +1157,32 @@ function App() {
                         <div className="citations">
                           {paragraphView.links
                             .filter((link) => link.sentence_id === sentence.id)
-                            .map((link) => (
-                              <Badge key={link.id} className="chip">
+                            .map((link, index) => (
+                              <Badge
+                                key={`${link.sentence_id}-${link.fact_id}-${index}`}
+                                className={
+                                  hoveredSentenceId === sentence.id
+                                    ? "chip chip--highlight"
+                                    : "chip"
+                                }
+                              >
                                 {link.fact_id}
                               </Badge>
                             ))}
+                          {paragraphView.links.filter((link) => link.sentence_id === sentence.id).length === 0 ? (
+                            <Badge key={`${sentence.id}-uncited`} variant="danger">Uncited</Badge>
+                          ) : null}
                         </div>
                       </Card>
                     ))}
                   </div>
                 )}
+                {missingEvidence ? (
+                  <div className="empty-card">
+                    <p className="muted">Missing evidence detected.</p>
+                    <p className="muted">Review uncited sentences or add more facts.</p>
+                  </div>
+                ) : null}
                 <h3>Facts</h3>
                 {paragraphView.facts.length === 0 ? (
                   <div className="empty-card">
@@ -914,7 +1192,18 @@ function App() {
                 ) : (
                   <div className="facts">
                     {paragraphView.facts.map((fact) => (
-                      <Card key={fact.id} className="compact-card">
+                      <Card
+                        key={fact.id}
+                        className={
+                          paragraphView.links.some(
+                            (link) =>
+                              link.fact_id === fact.id &&
+                              link.sentence_id === highlightedSentenceId
+                          )
+                            ? "compact-card fact-card--selected"
+                            : "compact-card"
+                        }
+                      >
                         <Badge>{fact.source_type}</Badge>
                         <p>{fact.content}</p>
                         <small>{fact.id}</small>
