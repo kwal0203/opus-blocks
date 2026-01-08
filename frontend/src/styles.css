@@ -369,10 +369,25 @@ body {
   font-size: 1.4rem;
 }
 
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 16px;
+}
+
+.canvas-fields {
+  margin-top: 12px;
+}
+
+.canvas-status {
+  margin-bottom: 12px;
 }
 
 .actions {
