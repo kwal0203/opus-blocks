@@ -137,6 +137,22 @@ function App() {
         message: `${payload.job_type} finished.`
       });
     }
+    if (payload.status !== "SUCCEEDED") {
+      return;
+    }
+    if (payload.job_type === "EXTRACT_FACTS" && payload.target_id === documentId) {
+      loadFacts();
+      return;
+    }
+    if (
+      (payload.job_type === "GENERATE_PARAGRAPH" ||
+        payload.job_type === "VERIFY_PARAGRAPH" ||
+        payload.job_type === "REGENERATE_SENTENCES") &&
+      payload.target_id === paragraphId
+    ) {
+      fetchParagraphView(payload.target_id);
+      fetchParagraphRuns(payload.target_id);
+    }
   }
 
   const {
@@ -378,7 +394,10 @@ function App() {
       setFacts([]);
       setSelectedFactIds([]);
       const payload = await apiExtractDocumentFacts({ baseUrl, token, documentId });
-      setExtractJobId(requireId(payload, "Extract facts"));
+      const jobId = requireId(payload, "Extract facts");
+      setExtractJobId(jobId);
+      setJobLookupId(jobId);
+      startPolling(jobId);
       updateStatus("Extract job queued.");
       setToast({
         variant: "success",
