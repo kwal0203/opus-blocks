@@ -95,6 +95,7 @@ function App() {
   const [documentFile, setDocumentFile] = useState(/** @type {File | null} */ (null));
   const [extractJobId, setExtractJobId] = useState("");
   const [facts, setFacts] = useState(/** @type {Fact[]} */ ([]));
+  const [isFactsLoading, setIsFactsLoading] = useState(false);
   const [factSearch, setFactSearch] = useState("");
   const [factSourceFilter, setFactSourceFilter] = useState("ALL");
   const [factUncertainFilter, setFactUncertainFilter] = useState("ALL");
@@ -124,6 +125,7 @@ function App() {
   const [hoveredSentenceId, setHoveredSentenceId] = useState("");
   const [editingSentenceId, setEditingSentenceId] = useState("");
   const [editingSentenceText, setEditingSentenceText] = useState("");
+  const toastTimeoutMs = 3000;
 
   function handleJobTerminal(payload) {
     if (payload.status === "FAILED") {
@@ -172,6 +174,14 @@ function App() {
     onTerminal: handleJobTerminal,
     onError: handleError
   });
+
+  useEffect(() => {
+    if (!toast) return undefined;
+    const timeout = setTimeout(() => {
+      setToast(null);
+    }, toastTimeoutMs);
+    return () => clearTimeout(timeout);
+  }, [toast, toastTimeoutMs]);
 
   const tokenPreview = useMemo(() => {
     if (!token) return "Not set";
@@ -418,6 +428,7 @@ function App() {
       return;
     }
     updateStatus("Loading facts...");
+    setIsFactsLoading(true);
     try {
       const payload = await apiFetchDocumentFacts({ baseUrl, token, documentId });
       setFacts(payload);
@@ -425,6 +436,8 @@ function App() {
       setToast({ variant: "success", title: "Facts loaded", message: "Library refreshed." });
     } catch (err) {
       handleError(err);
+    } finally {
+      setIsFactsLoading(false);
     }
   }
 
@@ -850,7 +863,11 @@ function App() {
               </div>
             </div>
             <div className="list">
-              {facts.length === 0 ? (
+              {isFactsLoading ? (
+                <div className="empty-card">
+                  <p className="muted">Loading facts…</p>
+                </div>
+              ) : facts.length === 0 ? (
                 <div className="empty-card">
                   <p className="muted">No facts yet.</p>
                   <p className="muted">
@@ -869,6 +886,9 @@ function App() {
                     className={selectedFactIds.includes(fact.id) ? "fact-card fact-card--selected" : "fact-card"}
                     role="button"
                     tabIndex={0}
+                    aria-pressed={selectedFactIds.includes(fact.id)}
+                    aria-label={`Toggle fact ${fact.id}`}
+                    onClick={() => toggleFactSelection(fact.id)}
                     onKeyDown={(event) => {
                       if (event.key === "Enter" || event.key === " ") {
                         event.preventDefault();
@@ -882,7 +902,10 @@ function App() {
                       <Button
                         size="sm"
                         variant={selectedFactIds.includes(fact.id) ? "primary" : "muted"}
-                        onClick={() => toggleFactSelection(fact.id)}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          toggleFactSelection(fact.id);
+                        }}
                       >
                         {selectedFactIds.includes(fact.id) ? "Selected" : "Select"}
                       </Button>
@@ -1144,7 +1167,17 @@ function App() {
                         onMouseLeave={() => setHoveredSentenceId("")}
                         role="button"
                         tabIndex={0}
+                        aria-pressed={sentence.id === activeSentenceId}
+                        onFocus={() => setActiveSentenceId(sentence.id)}
                         onKeyDown={(event) => {
+                          const target = event.target;
+                          if (target instanceof HTMLTextAreaElement || target instanceof HTMLButtonElement) {
+                            return;
+                          }
+                          if (event.key === " ") {
+                            event.preventDefault();
+                            setActiveSentenceId(sentence.id);
+                          }
                           if (event.key === "Enter") {
                             beginEditSentence(sentence);
                           }

@@ -6,7 +6,7 @@ Local setup
 
 Notes
 - by default the pipeline uses stubbed outputs; the OpenAI path is gated by `LLM_USE_OPENAI`
-- golden set runner: `uv run python scripts/run_golden_set.py docs/golden-dataset-v0.json --results-out docs/golden-results-v0.json`
+- golden set runner: `uv run python scripts/run_golden_set.py datasets/golden/golden-dataset-v0.json --results-out datasets/golden/golden-results-v0.json`
 - job dispatch is disabled by default; set `JOBS_ENQUEUE_ENABLED=true` and run a Celery worker to execute extract/generate/verify
 - token budgets and circuit breaker controls are configurable via `LLM_TOKEN_BUDGET_*` and `CIRCUIT_BREAKER_*`
 
