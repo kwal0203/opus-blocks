@@ -1,7 +1,7 @@
 import Badge from "../../components/ui/Badge";
 import Card from "../../components/ui/Card";
 
-function AllowedFactsList({ paragraphView }) {
+function AllowedFactsList({ paragraphView, isLoading }) {
   if (!paragraphView) {
     return null;
   }
@@ -12,7 +12,9 @@ function AllowedFactsList({ paragraphView }) {
   return (
     <div>
       <span className="inspector__label">Allowed Facts</span>
-      {allowedIds.length ? (
+      {isLoading ? (
+        <p className="muted">Loading allowed facts…</p>
+      ) : allowedIds.length ? (
         <div className="run-list">
           {allowedIds.map((factId) => {
             const fact = factById.get(factId);

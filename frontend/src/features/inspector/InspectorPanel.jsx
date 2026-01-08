@@ -11,7 +11,8 @@ function InspectorPanel({
   activeSentenceId,
   activeSentence,
   isRunsLoading,
-  runsError
+  runsError,
+  isParagraphLoading
 }) {
   return (
     <section className="panel">
@@ -22,9 +23,16 @@ function InspectorPanel({
             paragraph={paragraphView.paragraph}
             paragraphJobStatus={paragraphJobStatus}
           />
-          <AllowedFactsList paragraphView={paragraphView} />
+          <AllowedFactsList
+            paragraphView={paragraphView}
+            isLoading={isParagraphLoading}
+          />
           <SentenceInspector activeSentence={activeSentence} />
-          <CitationList paragraphView={paragraphView} activeSentenceId={activeSentenceId} />
+          <CitationList
+            paragraphView={paragraphView}
+            activeSentenceId={activeSentenceId}
+            isLoading={isParagraphLoading}
+          />
           <RunHistory
             paragraphRuns={paragraphRuns}
             isLoading={isRunsLoading}

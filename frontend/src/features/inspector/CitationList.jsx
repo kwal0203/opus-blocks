@@ -1,8 +1,21 @@
 import Badge from "../../components/ui/Badge";
 import Card from "../../components/ui/Card";
 
-function CitationList({ paragraphView, activeSentenceId }) {
-  if (!paragraphView || !activeSentenceId) {
+function CitationList({ paragraphView, activeSentenceId, isLoading }) {
+  if (!paragraphView) {
+    return null;
+  }
+
+  if (isLoading) {
+    return (
+      <div>
+        <span className="inspector__label">Citations</span>
+        <p className="muted">Loading citations…</p>
+      </div>
+    );
+  }
+
+  if (!activeSentenceId) {
     return (
       <div>
         <span className="inspector__label">Citations</span>

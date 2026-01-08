@@ -115,6 +115,7 @@ function App() {
   const [paragraphView, setParagraphView] = useState(
     /** @type {ParagraphView | null} */ (null)
   );
+  const [isParagraphLoading, setIsParagraphLoading] = useState(false);
   const [paragraphRuns, setParagraphRuns] = useState(/** @type {Run[]} */ ([]));
   const [isRunsLoading, setIsRunsLoading] = useState(false);
   const [runsError, setRunsError] = useState("");
@@ -562,6 +563,7 @@ function App() {
       return;
     }
     updateStatus("Loading paragraph view...");
+    setIsParagraphLoading(true);
     try {
       const payload = await apiFetchParagraphView({
         baseUrl,
@@ -576,6 +578,8 @@ function App() {
       setToast({ variant: "success", title: "Paragraph loaded", message: "View refreshed." });
     } catch (err) {
       handleError(err);
+    } finally {
+      setIsParagraphLoading(false);
     }
   }
 
@@ -1278,6 +1282,7 @@ function App() {
             activeSentence={activeSentence}
             isRunsLoading={isRunsLoading}
             runsError={runsError}
+            isParagraphLoading={isParagraphLoading}
           />
         </aside>
       </div>
