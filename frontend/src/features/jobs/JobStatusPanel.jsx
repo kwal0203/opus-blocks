@@ -11,7 +11,8 @@ function JobStatusPanel({
   jobStatus,
   onRetryJob,
   isLoading,
-  isPolling
+  isPolling,
+  errorMessage
 }) {
   return (
     <section className="panel">
@@ -37,6 +38,7 @@ function JobStatusPanel({
           </Button>
         ) : null}
       </div>
+      {errorMessage ? <p className="error">{errorMessage}</p> : null}
       {jobStatus ? (
         <Card className="job">
           <strong>{jobStatus.job_type}</strong>

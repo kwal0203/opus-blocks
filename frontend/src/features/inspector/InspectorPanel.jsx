@@ -10,7 +10,8 @@ function InspectorPanel({
   paragraphJobStatus,
   activeSentenceId,
   activeSentence,
-  isRunsLoading
+  isRunsLoading,
+  runsError
 }) {
   return (
     <section className="panel">
@@ -24,7 +25,11 @@ function InspectorPanel({
           <AllowedFactsList paragraphView={paragraphView} />
           <SentenceInspector activeSentence={activeSentence} />
           <CitationList paragraphView={paragraphView} activeSentenceId={activeSentenceId} />
-          <RunHistory paragraphRuns={paragraphRuns} isLoading={isRunsLoading} />
+          <RunHistory
+            paragraphRuns={paragraphRuns}
+            isLoading={isRunsLoading}
+            errorMessage={runsError}
+          />
         </div>
       ) : (
         <p className="muted">Load a paragraph to inspect details.</p>

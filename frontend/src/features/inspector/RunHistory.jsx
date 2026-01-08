@@ -1,9 +1,10 @@
 import Card from "../../components/ui/Card";
 
-function RunHistory({ paragraphRuns, isLoading }) {
+function RunHistory({ paragraphRuns, isLoading, errorMessage }) {
   return (
     <div>
       <span className="inspector__label">Run History</span>
+      {errorMessage ? <p className="error">{errorMessage}</p> : null}
       {isLoading ? (
         <p className="muted">Loading run history…</p>
       ) : paragraphRuns.length ? (

@@ -117,6 +117,7 @@ function App() {
   );
   const [paragraphRuns, setParagraphRuns] = useState(/** @type {Run[]} */ ([]));
   const [isRunsLoading, setIsRunsLoading] = useState(false);
+  const [runsError, setRunsError] = useState("");
   const [jobLookupId, setJobLookupId] = useState("");
   const [activeSentenceId, setActiveSentenceId] = useState("");
   const [hoveredSentenceId, setHoveredSentenceId] = useState("");
@@ -162,7 +163,8 @@ function App() {
     stopPolling,
     clearStatus,
     isPolling,
-    isLoading: isJobStatusLoading
+    isLoading: isJobStatusLoading,
+    error: jobStatusError
   } = useJobStatus({
     baseUrl,
     token,
@@ -586,7 +588,10 @@ function App() {
         paragraphId: paragraphIdToLoad
       });
       setParagraphRuns(payload);
+      setRunsError("");
     } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setRunsError(message);
       handleError(err);
     } finally {
       setIsRunsLoading(false);
@@ -1255,6 +1260,7 @@ function App() {
             jobStatus={jobStatus}
             isLoading={isJobStatusLoading}
             isPolling={isPolling}
+            errorMessage={jobStatusError}
             onRetryJob={() => {
               if (!jobStatus) return;
               if (jobStatus.job_type === "GENERATE_PARAGRAPH") {
@@ -1271,6 +1277,7 @@ function App() {
             activeSentenceId={activeSentenceId}
             activeSentence={activeSentence}
             isRunsLoading={isRunsLoading}
+            runsError={runsError}
           />
         </aside>
       </div>
