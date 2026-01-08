@@ -339,6 +339,20 @@ function App() {
     localStorage.removeItem(paragraphIdKey);
   }
 
+  async function copyToken() {
+    if (!token) {
+      setToast({ variant: "danger", title: "No token", message: "Sign in to copy a token." });
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(token);
+      setToast({ variant: "success", title: "Token copied", message: "Copied to clipboard." });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setToast({ variant: "danger", title: "Copy failed", message });
+    }
+  }
+
   async function register() {
     updateStatus("Registering...");
     try {
@@ -749,7 +763,9 @@ function App() {
           </div>
           <div>
             <span>Token</span>
-            <strong>{tokenPreview}</strong>
+            <button className="token-button" type="button" onClick={copyToken}>
+              {tokenPreview}
+            </button>
           </div>
           <div className="header-actions">
             <nav className="header-nav">

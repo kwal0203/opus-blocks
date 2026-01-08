@@ -129,6 +129,28 @@ body {
   margin-top: 4px;
 }
 
+.token-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.token-button:hover {
+  text-decoration: underline;
+}
+
+.token-button:focus-visible {
+  outline: 2px solid rgba(219, 108, 45, 0.7);
+  outline-offset: 2px;
+}
+
 .error {
   color: var(--danger);
   font-size: 0.9rem;
