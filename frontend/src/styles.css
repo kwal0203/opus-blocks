@@ -201,6 +201,7 @@ body {
 .fact-card {
   display: grid;
   gap: 8px;
+  cursor: pointer;
 }
 
 .fact-card__header {
@@ -227,6 +228,11 @@ body {
 .fact-card--selected {
   border-color: rgba(216, 106, 59, 0.5);
   box-shadow: 0 10px 24px rgba(216, 106, 59, 0.24);
+}
+
+.fact-card:focus-visible {
+  outline: 2px solid rgba(219, 108, 45, 0.7);
+  outline-offset: 2px;
 }
 
 .empty-card {
@@ -304,6 +310,11 @@ body {
   transform: translateY(-2px);
   box-shadow: 0 12px 28px rgba(15, 17, 20, 0.2);
   border-color: rgba(31, 143, 106, 0.4);
+}
+
+.sentence:focus-visible {
+  outline: 2px solid rgba(219, 108, 45, 0.7);
+  outline-offset: 2px;
 }
 
 .failure-modes {

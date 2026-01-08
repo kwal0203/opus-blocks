@@ -1,6 +1,6 @@
-# Frontend Manual Test Checklist (Phase 4)
+# Frontend Manual Test Checklist (Phase 7)
 
-This checklist validates the core frontend flow after Phase 4 changes.
+This checklist validates the core frontend flow after Phase 7 QA + polish updates.
 
 ## Environment
 
@@ -13,10 +13,10 @@ This checklist validates the core frontend flow after Phase 4 changes.
 - Login and confirm you land on the canvas
 - Sign out returns you to auth screen
 
-## Document + Facts
+## Generate Facts
 
-- Upload a PDF
-- Extract facts
+- Upload a PDF (button triggers file picker)
+- Extract facts and wait for auto-refresh
 - Verify fact list loads and shows max 5 entries at a time
 - Use search to highlight matches
 - Select 1-2 facts and verify selection indicator
@@ -31,11 +31,12 @@ This checklist validates the core frontend flow after Phase 4 changes.
 
 - Load paragraph view and see sentences/citations
 - Click a sentence and confirm inspector updates
+- Tab to a sentence card and press Space to select it
 - Run history shows at least one run entry
+- Allowed Facts and Citations panels show expected entries
 
 ## UX + Accessibility
 
-- Keyboard tab to a fact card and select with Enter/Space
+- Keyboard tab to action buttons and select with Enter/Space
 - Verify focus ring is visible on buttons/inputs
 - Resize viewport under 860px and verify mobile warning appears
-

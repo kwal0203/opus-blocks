@@ -1,5 +1,9 @@
-const Card = ({ className = "", children }) => {
-  return <div className={["ui-card", className].filter(Boolean).join(" ")}>{children}</div>;
+const Card = ({ className = "", children, ...props }) => {
+  return (
+    <div className={["ui-card", className].filter(Boolean).join(" ")} {...props}>
+      {children}
+    </div>
+  );
 };
 
 export default Card;
