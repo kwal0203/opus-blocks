@@ -125,6 +125,7 @@ function App() {
   const [hoveredSentenceId, setHoveredSentenceId] = useState("");
   const [editingSentenceId, setEditingSentenceId] = useState("");
   const [editingSentenceText, setEditingSentenceText] = useState("");
+  const toastTimeoutMs = 3000;
 
   function handleJobTerminal(payload) {
     if (payload.status === "FAILED") {
@@ -173,6 +174,14 @@ function App() {
     onTerminal: handleJobTerminal,
     onError: handleError
   });
+
+  useEffect(() => {
+    if (!toast) return undefined;
+    const timeout = setTimeout(() => {
+      setToast(null);
+    }, toastTimeoutMs);
+    return () => clearTimeout(timeout);
+  }, [toast, toastTimeoutMs]);
 
   const tokenPreview = useMemo(() => {
     if (!token) return "Not set";
