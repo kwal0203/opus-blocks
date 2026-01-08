@@ -118,6 +118,7 @@ function App() {
   const [jobStatus, setJobStatus] = useState(/** @type {Job | null} */ (null));
   const [autoPollJobId, setAutoPollJobId] = useState("");
   const [activeSentenceId, setActiveSentenceId] = useState("");
+  const [hoveredSentenceId, setHoveredSentenceId] = useState("");
   const [editingSentenceId, setEditingSentenceId] = useState("");
   const [editingSentenceText, setEditingSentenceText] = useState("");
 
@@ -588,10 +589,14 @@ function App() {
   const activeSentence = paragraphView?.sentences.find(
     (sentence) => sentence.id === activeSentenceId
   );
+  const highlightedSentenceId = hoveredSentenceId || activeSentenceId;
   const paragraphJobStatus =
     jobStatus && paragraphView && jobStatus.target_id === paragraphView.paragraph.id
       ? jobStatus
       : null;
+  const missingEvidence = paragraphView?.sentences?.some((sentence) =>
+    sentence.verifier_failure_modes?.includes("UNCITED_CLAIM")
+  );
   const paragraphStatus = paragraphView?.paragraph?.status || "UNKNOWN";
   const isJobActive = Boolean(autoPollJobId);
   const statusVariant =
@@ -1100,6 +1105,8 @@ function App() {
                             : "sentence"
                         }
                         onClick={() => setActiveSentenceId(sentence.id)}
+                        onMouseEnter={() => setHoveredSentenceId(sentence.id)}
+                        onMouseLeave={() => setHoveredSentenceId("")}
                         role="button"
                         tabIndex={0}
                         onKeyDown={(event) => {
@@ -1150,16 +1157,32 @@ function App() {
                         <div className="citations">
                           {paragraphView.links
                             .filter((link) => link.sentence_id === sentence.id)
-                            .map((link) => (
-                              <Badge key={link.id} className="chip">
+                            .map((link, index) => (
+                              <Badge
+                                key={`${link.sentence_id}-${link.fact_id}-${index}`}
+                                className={
+                                  hoveredSentenceId === sentence.id
+                                    ? "chip chip--highlight"
+                                    : "chip"
+                                }
+                              >
                                 {link.fact_id}
                               </Badge>
                             ))}
+                          {paragraphView.links.filter((link) => link.sentence_id === sentence.id).length === 0 ? (
+                            <Badge key={`${sentence.id}-uncited`} variant="danger">Uncited</Badge>
+                          ) : null}
                         </div>
                       </Card>
                     ))}
                   </div>
                 )}
+                {missingEvidence ? (
+                  <div className="empty-card">
+                    <p className="muted">Missing evidence detected.</p>
+                    <p className="muted">Review uncited sentences or add more facts.</p>
+                  </div>
+                ) : null}
                 <h3>Facts</h3>
                 {paragraphView.facts.length === 0 ? (
                   <div className="empty-card">
@@ -1169,7 +1192,18 @@ function App() {
                 ) : (
                   <div className="facts">
                     {paragraphView.facts.map((fact) => (
-                      <Card key={fact.id} className="compact-card">
+                      <Card
+                        key={fact.id}
+                        className={
+                          paragraphView.links.some(
+                            (link) =>
+                              link.fact_id === fact.id &&
+                              link.sentence_id === highlightedSentenceId
+                          )
+                            ? "compact-card fact-card--selected"
+                            : "compact-card"
+                        }
+                      >
                         <Badge>{fact.source_type}</Badge>
                         <p>{fact.content}</p>
                         <small>{fact.id}</small>
